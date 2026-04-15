@@ -1,0 +1,13 @@
+root = "."
+tmp_dir = "tmp"
+
+[build]
+cmd = "go build -o ./tmp/server ./cmd/server"
+bin = "./tmp/server"
+include_ext = ["go", "yaml", "yml"]
+exclude_dir = ["tmp", "vendor", "tools/mcp-server", "node_modules", ".git"]
+delay = 500
+stop_on_error = true
+
+[log]
+time = true

@@ -1,0 +1,15 @@
+.git
+.github
+.env
+.env.*
+!.env.example
+**/node_modules
+tools/mcp-server
+bin/
+dist/
+.idea
+.vscode
+*.log
+*.md
+.cursor
+plans

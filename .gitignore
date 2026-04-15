@@ -1,0 +1,9 @@
+.env
+.env.prod
+tools/mcp-server/node_modules/
+tools/mcp-server/dist/
+bin/
+dist/
+vendor/
+coverage.out
+*.log

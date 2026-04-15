@@ -1,0 +1,29 @@
+server:
+  port: "8080"
+  gin_mode: "release"
+  # If empty, CORS uses Access-Control-Allow-Origin: * without credentials.
+  # For a browser SPA on another origin, list explicit origins (e.g. http://localhost:4200).
+  cors_allowed_origins: []
+
+auth:
+  token_ttl_minutes: 60
+  refresh_ttl_minutes: 10080
+  jwt_secret_arn: ""
+  users_secret_arn: ""
+
+aws:
+  profile: ""
+  regions:
+    - eu-south-1
+    - eu-central-1
+
+database:
+  host: ""
+  port: 5432
+  name: caddy_dashboard
+  user: ""
+  password: ""
+  params: charset=utf8mb4&parseTime=True&loc=Local
+
+observability:
+  log_level: info
