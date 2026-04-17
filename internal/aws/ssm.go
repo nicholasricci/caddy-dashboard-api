@@ -114,13 +114,13 @@ func (s *SSMService) DiscoverManagedInstances(ctx context.Context, region string
 				name = aws.ToString(info.ComputerName)
 			}
 			nodes = append(nodes, models.CaddyNode{
-				Name:         name,
-				InstanceID:   aws.String(id),
-				PrivateIP:    ipPtr,
-				Region:       region,
-				SSMEnabled:   true,
-				Status:       string(info.PingStatus),
-				LastSeenAt:   &now,
+				Name:       name,
+				InstanceID: aws.String(id),
+				PrivateIP:  ipPtr,
+				Region:     region,
+				SSMEnabled: true,
+				Status:     string(info.PingStatus),
+				LastSeenAt: &now,
 			})
 		}
 		token = out.NextToken
