@@ -12,6 +12,7 @@ import (
 // nodeRepository is satisfied by *repository.NodeRepository; narrowed for tests.
 type nodeRepository interface {
 	List(ctx context.Context) ([]models.CaddyNode, error)
+	ListPaginated(ctx context.Context, limit, offset int) ([]models.CaddyNode, int64, error)
 	GetByID(ctx context.Context, id uuid.UUID) (*models.CaddyNode, error)
 	Create(ctx context.Context, node *models.CaddyNode) error
 	Update(ctx context.Context, node *models.CaddyNode) error
@@ -28,6 +29,10 @@ func NewNodeService(repo nodeRepository) *NodeService {
 
 func (s *NodeService) List(ctx context.Context) ([]models.CaddyNode, error) {
 	return s.repo.List(ctx)
+}
+
+func (s *NodeService) ListPaginated(ctx context.Context, limit, offset int) ([]models.CaddyNode, int64, error) {
+	return s.repo.ListPaginated(ctx, limit, offset)
 }
 
 func (s *NodeService) Create(ctx context.Context, node *models.CaddyNode) error {

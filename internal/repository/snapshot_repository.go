@@ -25,6 +25,18 @@ func (r *SnapshotRepository) ListByNodeID(ctx context.Context, nodeID uuid.UUID)
 	err := r.db.WithContext(ctx).
 		Where("node_id = ?", nodeID).
 		Order("applied_at desc").
+		Limit(100).
 		Find(&snapshots).Error
 	return snapshots, err
+}
+
+func (r *SnapshotRepository) ListByNodeIDPaginated(ctx context.Context, nodeID uuid.UUID, limit, offset int) ([]models.CaddySnapshot, int64, error) {
+	var snapshots []models.CaddySnapshot
+	var total int64
+	q := r.db.WithContext(ctx).Model(&models.CaddySnapshot{}).Where("node_id = ?", nodeID)
+	if err := q.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	err := q.Order("applied_at desc").Limit(limit).Offset(offset).Find(&snapshots).Error
+	return snapshots, total, err
 }

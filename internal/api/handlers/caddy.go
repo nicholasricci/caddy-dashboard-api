@@ -13,11 +13,12 @@ import (
 )
 
 type CaddyHandler struct {
-	svc *services.CaddyService
+	svc   *services.CaddyService
+	audit *services.AuditService
 }
 
-func NewCaddyHandler(svc *services.CaddyService) *CaddyHandler {
-	return &CaddyHandler{svc: svc}
+func NewCaddyHandler(svc *services.CaddyService, audit *services.AuditService) *CaddyHandler {
+	return &CaddyHandler{svc: svc, audit: audit}
 }
 
 // respondCaddyNodeError writes the appropriate JSON error for node-scoped Caddy operations. Returns true if handled.
@@ -30,7 +31,7 @@ func respondCaddyNodeError(c *gin.Context, err error) bool {
 		return true
 	}
 	if errors.Is(err, caddysvc.ErrNodeNoInstanceID) {
-		c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: err.Error()})
+		c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "node has no instance_id configured"})
 		return true
 	}
 	return false
@@ -66,6 +67,7 @@ func (h *CaddyHandler) Sync(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "sync failed"})
 		return
 	}
+	_ = h.audit.Record(c.Request.Context(), username, "sync", "node", nodeID.String(), nil)
 	c.JSON(http.StatusOK, gin.H{"message": "node config synced"})
 }
 
@@ -131,6 +133,7 @@ func (h *CaddyHandler) Apply(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "apply failed"})
 		return
 	}
+	_ = h.audit.Record(c.Request.Context(), username, "apply", "node", nodeID.String(), gin.H{"config_size": len(req.Config)})
 	c.JSON(http.StatusOK, gin.H{"message": "config applied"})
 }
 
@@ -159,6 +162,7 @@ func (h *CaddyHandler) Reload(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "reload failed"})
 		return
 	}
+	_ = h.audit.Record(c.Request.Context(), c.GetString("username"), "reload", "node", nodeID.String(), nil)
 	c.JSON(http.StatusOK, gin.H{"message": "caddy reloaded"})
 }
 
@@ -179,10 +183,11 @@ func (h *CaddyHandler) ListSnapshots(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "invalid node id"})
 		return
 	}
-	snapshots, err := h.svc.ListSnapshots(c.Request.Context(), nodeID)
+	limit, offset := parseLimitOffset(c)
+	snapshots, total, err := h.svc.ListSnapshotsPaginated(c.Request.Context(), nodeID, limit, offset)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "failed to list snapshots"})
 		return
 	}
-	c.JSON(http.StatusOK, snapshots)
+	c.JSON(http.StatusOK, gin.H{"items": snapshots, "meta": models.PaginationMeta{Total: total, Limit: limit, Offset: offset}})
 }

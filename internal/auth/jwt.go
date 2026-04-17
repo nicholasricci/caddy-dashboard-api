@@ -29,17 +29,26 @@ type JWTManager struct {
 	secret        []byte
 	accessTTL     time.Duration
 	refreshTTL    time.Duration
+	issuer        string
+	audience      string
 	validMethods  []string
 	parserOptions []jwt.ParserOption
 }
 
-func NewJWTManager(secret string, accessTTLMinutes, refreshTTLMinutes int) *JWTManager {
+func NewJWTManager(secret string, accessTTLMinutes, refreshTTLMinutes int, issuer, audience string) *JWTManager {
 	return &JWTManager{
-		secret:        []byte(secret),
-		accessTTL:     time.Duration(accessTTLMinutes) * time.Minute,
-		refreshTTL:    time.Duration(refreshTTLMinutes) * time.Minute,
-		validMethods:  []string{jwt.SigningMethodHS256.Alg()},
-		parserOptions: []jwt.ParserOption{jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()})},
+		secret:       []byte(secret),
+		accessTTL:    time.Duration(accessTTLMinutes) * time.Minute,
+		refreshTTL:   time.Duration(refreshTTLMinutes) * time.Minute,
+		issuer:       issuer,
+		audience:     audience,
+		validMethods: []string{jwt.SigningMethodHS256.Alg()},
+		parserOptions: []jwt.ParserOption{
+			jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}),
+			jwt.WithLeeway(30 * time.Second),
+			jwt.WithIssuer(issuer),
+			jwt.WithAudience(audience),
+		},
 	}
 }
 
@@ -53,6 +62,8 @@ func (m *JWTManager) GeneratePair(username, role string) (access, refresh string
 			Subject:   username,
 			IssuedAt:  jwt.NewNumericDate(now),
 			ExpiresAt: jwt.NewNumericDate(now.Add(m.accessTTL)),
+			Issuer:    m.issuer,
+			Audience:  jwt.ClaimStrings{m.audience},
 		},
 	}
 	at := jwt.NewWithClaims(jwt.SigningMethodHS256, accessClaims)
@@ -69,6 +80,8 @@ func (m *JWTManager) GeneratePair(username, role string) (access, refresh string
 			Subject:   username,
 			IssuedAt:  jwt.NewNumericDate(now),
 			ExpiresAt: jwt.NewNumericDate(now.Add(m.refreshTTL)),
+			Issuer:    m.issuer,
+			Audience:  jwt.ClaimStrings{m.audience},
 		},
 	}
 	rt := jwt.NewWithClaims(jwt.SigningMethodHS256, refreshClaims)

@@ -1,7 +1,10 @@
-.PHONY: run build test lint fmt swagger swag-install mcp-build mcp-run docker-dev-build docker-dev-up docker-dev-down docker-dev-logs
+.PHONY: run migrate build test lint fmt swagger swag-install mcp-build mcp-run docker-dev-build docker-dev-up docker-dev-down docker-dev-logs
 
 run:
 	go run ./cmd/server
+
+migrate:
+	go run ./cmd/migrate
 
 build:
 	go build ./...

@@ -11,5 +11,7 @@ func AutoMigrate(db *gorm.DB) error {
 		&models.DiscoveryConfig{},
 		&models.CaddySnapshot{},
 		&models.User{},
+		&models.RefreshToken{},
+		&models.AuditLog{},
 	)
 }

@@ -18,8 +18,19 @@ func NewDiscoveryRepository(db *gorm.DB) *DiscoveryRepository {
 
 func (r *DiscoveryRepository) List(ctx context.Context) ([]models.DiscoveryConfig, error) {
 	var cfgs []models.DiscoveryConfig
-	err := r.db.WithContext(ctx).Order("created_at desc").Find(&cfgs).Error
+	err := r.db.WithContext(ctx).Order("created_at desc").Limit(100).Find(&cfgs).Error
 	return cfgs, err
+}
+
+func (r *DiscoveryRepository) ListPaginated(ctx context.Context, limit, offset int) ([]models.DiscoveryConfig, int64, error) {
+	var cfgs []models.DiscoveryConfig
+	var total int64
+	q := r.db.WithContext(ctx).Model(&models.DiscoveryConfig{})
+	if err := q.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	err := q.Order("created_at desc").Limit(limit).Offset(offset).Find(&cfgs).Error
+	return cfgs, total, err
 }
 
 func (r *DiscoveryRepository) GetByID(ctx context.Context, id uuid.UUID) (*models.DiscoveryConfig, error) {

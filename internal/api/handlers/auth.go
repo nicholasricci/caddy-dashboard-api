@@ -26,6 +26,10 @@ type refreshRequest struct {
 	RefreshToken string `json:"refresh_token" binding:"required"`
 }
 
+type logoutRequest struct {
+	RefreshToken string `json:"refresh_token" binding:"required"`
+}
+
 // Login godoc
 // @Summary User login
 // @Description Authenticates user and returns access and refresh JWTs
@@ -92,4 +96,29 @@ func (h *AuthHandler) Refresh(c *gin.Context) {
 		"refresh_token": pair.RefreshToken,
 		"token":         pair.AccessToken,
 	})
+}
+
+// Logout godoc
+// @Summary Logout user
+// @Description Revokes the provided refresh token
+// @Tags auth
+// @Accept json
+// @Produce json
+// @Param payload body logoutRequest true "Logout payload"
+// @Success 204
+// @Failure 400 {object} models.ErrorResponse
+// @Failure 500 {object} models.ErrorResponse
+// @Security BearerAuth
+// @Router /api/v1/auth/logout [post]
+func (h *AuthHandler) Logout(c *gin.Context) {
+	var req logoutRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "invalid request body"})
+		return
+	}
+	if err := h.authSvc.Logout(c.Request.Context(), req.RefreshToken); err != nil {
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "logout failed"})
+		return
+	}
+	c.Status(http.StatusNoContent)
 }

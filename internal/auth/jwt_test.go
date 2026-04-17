@@ -7,7 +7,7 @@ import (
 )
 
 func TestJWTManager_GeneratePair_AccessVsRefresh(t *testing.T) {
-	m := NewJWTManager("test-secret-key-min-32-bytes-ok", 15, 60*24)
+	m := NewJWTManager("test-secret-key-min-32-bytes-ok", 15, 60*24, "test-issuer", "test-audience")
 	access, refresh, err := m.GeneratePair("alice", models.RoleAdmin)
 	if err != nil {
 		t.Fatal(err)

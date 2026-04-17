@@ -1,8 +1,10 @@
 package handlers
 
 import (
+	"encoding/json"
 	"errors"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -11,11 +13,22 @@ import (
 )
 
 type DiscoveryHandler struct {
-	svc *services.DiscoveryService
+	svc   *services.DiscoveryService
+	audit *services.AuditService
 }
 
-func NewDiscoveryHandler(svc *services.DiscoveryService) *DiscoveryHandler {
-	return &DiscoveryHandler{svc: svc}
+type discoveryWriteRequest struct {
+	Name       string          `json:"name" binding:"required"`
+	Method     string          `json:"method"`
+	Region     string          `json:"region" binding:"required"`
+	TagKey     string          `json:"tag_key"`
+	TagValue   string          `json:"tag_value"`
+	Parameters json.RawMessage `json:"parameters"`
+	Enabled    *bool           `json:"enabled"`
+}
+
+func NewDiscoveryHandler(svc *services.DiscoveryService, audit *services.AuditService) *DiscoveryHandler {
+	return &DiscoveryHandler{svc: svc, audit: audit}
 }
 
 // List godoc
@@ -28,12 +41,13 @@ func NewDiscoveryHandler(svc *services.DiscoveryService) *DiscoveryHandler {
 // @Security BearerAuth
 // @Router /api/v1/discovery [get]
 func (h *DiscoveryHandler) List(c *gin.Context) {
-	items, err := h.svc.List(c.Request.Context())
+	limit, offset := parseLimitOffset(c)
+	items, total, err := h.svc.ListPaginated(c.Request.Context(), limit, offset)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "failed to list discovery configs"})
 		return
 	}
-	c.JSON(http.StatusOK, items)
+	c.JSON(http.StatusOK, gin.H{"items": items, "meta": models.PaginationMeta{Total: total, Limit: limit, Offset: offset}})
 }
 
 // Get godoc
@@ -76,16 +90,30 @@ func (h *DiscoveryHandler) Get(c *gin.Context) {
 // @Security BearerAuth
 // @Router /api/v1/discovery [post]
 func (h *DiscoveryHandler) Create(c *gin.Context) {
-	var req models.DiscoveryConfig
+	var req discoveryWriteRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "invalid request body"})
 		return
 	}
-	if err := h.svc.Create(c.Request.Context(), &req); err != nil {
+	cfg := models.DiscoveryConfig{
+		Name:       strings.TrimSpace(req.Name),
+		Method:     strings.TrimSpace(req.Method),
+		Region:     strings.TrimSpace(req.Region),
+		TagKey:     strings.TrimSpace(req.TagKey),
+		TagValue:   strings.TrimSpace(req.TagValue),
+		Parameters: req.Parameters,
+	}
+	if req.Enabled != nil {
+		cfg.Enabled = *req.Enabled
+	} else {
+		cfg.Enabled = true
+	}
+	if err := h.svc.Create(c.Request.Context(), &cfg); err != nil {
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "failed to create discovery config"})
 		return
 	}
-	c.JSON(http.StatusCreated, req)
+	_ = h.audit.Record(c.Request.Context(), c.GetString("username"), "create", "discovery", cfg.ID.String(), cfg)
+	c.JSON(http.StatusCreated, cfg)
 }
 
 // Update godoc
@@ -106,13 +134,26 @@ func (h *DiscoveryHandler) Update(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "invalid discovery id"})
 		return
 	}
-	var req models.DiscoveryConfig
+	var req discoveryWriteRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "invalid request body"})
 		return
 	}
-	req.ID = id
-	if err := h.svc.Update(c.Request.Context(), &req); err != nil {
+	cfg := models.DiscoveryConfig{
+		ID:         id,
+		Name:       strings.TrimSpace(req.Name),
+		Method:     strings.TrimSpace(req.Method),
+		Region:     strings.TrimSpace(req.Region),
+		TagKey:     strings.TrimSpace(req.TagKey),
+		TagValue:   strings.TrimSpace(req.TagValue),
+		Parameters: req.Parameters,
+	}
+	if req.Enabled != nil {
+		cfg.Enabled = *req.Enabled
+	} else {
+		cfg.Enabled = true
+	}
+	if err := h.svc.Update(c.Request.Context(), &cfg); err != nil {
 		if errors.Is(err, services.ErrDiscoveryNotFound) {
 			c.JSON(http.StatusNotFound, models.ErrorResponse{Error: "discovery config not found"})
 			return
@@ -120,7 +161,8 @@ func (h *DiscoveryHandler) Update(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "failed to update discovery config"})
 		return
 	}
-	c.JSON(http.StatusOK, req)
+	_ = h.audit.Record(c.Request.Context(), c.GetString("username"), "update", "discovery", cfg.ID.String(), cfg)
+	c.JSON(http.StatusOK, cfg)
 }
 
 // Delete godoc
@@ -145,6 +187,7 @@ func (h *DiscoveryHandler) Delete(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "failed to delete discovery config"})
 		return
 	}
+	_ = h.audit.Record(c.Request.Context(), c.GetString("username"), "delete", "discovery", id.String(), nil)
 	c.Status(http.StatusNoContent)
 }
 
@@ -184,5 +227,6 @@ func (h *DiscoveryHandler) Run(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "discovery run failed"})
 		return
 	}
+	_ = h.audit.Record(c.Request.Context(), c.GetString("username"), "run", "discovery", id.String(), gin.H{"discovered_nodes": count})
 	c.JSON(http.StatusOK, gin.H{"discovered_nodes": count})
 }

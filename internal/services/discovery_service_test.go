@@ -19,6 +19,10 @@ func (f *fakeDiscoveryRepo) List(context.Context) ([]models.DiscoveryConfig, err
 	return nil, errors.New("fakeDiscoveryRepo: List not implemented")
 }
 
+func (f *fakeDiscoveryRepo) ListPaginated(context.Context, int, int) ([]models.DiscoveryConfig, int64, error) {
+	return nil, 0, errors.New("fakeDiscoveryRepo: ListPaginated not implemented")
+}
+
 func (f *fakeDiscoveryRepo) GetByID(_ context.Context, _ uuid.UUID) (*models.DiscoveryConfig, error) {
 	if f.err != nil {
 		return nil, f.err

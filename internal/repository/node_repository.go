@@ -19,8 +19,19 @@ func NewNodeRepository(db *gorm.DB) *NodeRepository {
 
 func (r *NodeRepository) List(ctx context.Context) ([]models.CaddyNode, error) {
 	var nodes []models.CaddyNode
-	err := r.db.WithContext(ctx).Order("created_at desc").Find(&nodes).Error
+	err := r.db.WithContext(ctx).Order("created_at desc").Limit(100).Find(&nodes).Error
 	return nodes, err
+}
+
+func (r *NodeRepository) ListPaginated(ctx context.Context, limit, offset int) ([]models.CaddyNode, int64, error) {
+	var nodes []models.CaddyNode
+	var total int64
+	q := r.db.WithContext(ctx).Model(&models.CaddyNode{})
+	if err := q.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	err := q.Order("created_at desc").Limit(limit).Offset(offset).Find(&nodes).Error
+	return nodes, total, err
 }
 
 func (r *NodeRepository) GetByID(ctx context.Context, id uuid.UUID) (*models.CaddyNode, error) {

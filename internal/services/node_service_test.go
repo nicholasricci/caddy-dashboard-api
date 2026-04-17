@@ -19,6 +19,10 @@ func (f *fakeNodeRepo) List(context.Context) ([]models.CaddyNode, error) {
 	return nil, errors.New("fakeNodeRepo: List not implemented")
 }
 
+func (f *fakeNodeRepo) ListPaginated(context.Context, int, int) ([]models.CaddyNode, int64, error) {
+	return nil, 0, errors.New("fakeNodeRepo: ListPaginated not implemented")
+}
+
 func (f *fakeNodeRepo) GetByID(_ context.Context, _ uuid.UUID) (*models.CaddyNode, error) {
 	if f.getErr != nil {
 		return nil, f.getErr

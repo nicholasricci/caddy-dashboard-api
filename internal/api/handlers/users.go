@@ -11,11 +11,12 @@ import (
 )
 
 type UserHandler struct {
-	svc *services.UserService
+	svc   *services.UserService
+	audit *services.AuditService
 }
 
-func NewUserHandler(svc *services.UserService) *UserHandler {
-	return &UserHandler{svc: svc}
+func NewUserHandler(svc *services.UserService, audit *services.AuditService) *UserHandler {
+	return &UserHandler{svc: svc, audit: audit}
 }
 
 type createUserRequest struct {
@@ -39,12 +40,13 @@ type updateUserRequest struct {
 // @Security BearerAuth
 // @Router /api/v1/users [get]
 func (h *UserHandler) List(c *gin.Context) {
-	users, err := h.svc.List(c.Request.Context())
+	limit, offset := parseLimitOffset(c)
+	users, total, err := h.svc.ListPaginated(c.Request.Context(), limit, offset)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "failed to list users"})
 		return
 	}
-	c.JSON(http.StatusOK, users)
+	c.JSON(http.StatusOK, gin.H{"items": users, "meta": models.PaginationMeta{Total: total, Limit: limit, Offset: offset}})
 }
 
 // Get godoc
@@ -112,6 +114,7 @@ func (h *UserHandler) Create(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "failed to create user"})
 		return
 	}
+	_ = h.audit.Record(c.Request.Context(), c.GetString("username"), "create", "user", u.ID.String(), gin.H{"username": u.Username, "role": u.Role})
 	c.JSON(http.StatusCreated, u)
 }
 
@@ -163,6 +166,7 @@ func (h *UserHandler) Update(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "failed to update user"})
 		return
 	}
+	_ = h.audit.Record(c.Request.Context(), c.GetString("username"), "update", "user", u.ID.String(), gin.H{"username": u.Username, "role": u.Role})
 	c.JSON(http.StatusOK, u)
 }
 
@@ -198,5 +202,6 @@ func (h *UserHandler) Delete(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "failed to delete user"})
 		return
 	}
+	_ = h.audit.Record(c.Request.Context(), actor, "delete", "user", id.String(), nil)
 	c.Status(http.StatusNoContent)
 }

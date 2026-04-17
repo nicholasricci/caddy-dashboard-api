@@ -9,6 +9,7 @@ import (
 	"github.com/nicholasricci/caddy-dashboard/internal/models"
 	"github.com/nicholasricci/caddy-dashboard/internal/repository"
 	"golang.org/x/crypto/bcrypt"
+	"gorm.io/gorm"
 )
 
 var (
@@ -30,6 +31,10 @@ func NewUserService(repo *repository.UserRepository) *UserService {
 
 func (s *UserService) List(ctx context.Context) ([]models.User, error) {
 	return s.repo.List(ctx)
+}
+
+func (s *UserService) ListPaginated(ctx context.Context, limit, offset int) ([]models.User, int64, error) {
+	return s.repo.ListPaginated(ctx, limit, offset)
 }
 
 func (s *UserService) Get(ctx context.Context, id uuid.UUID) (*models.User, error) {
@@ -69,12 +74,22 @@ func (s *UserService) Create(ctx context.Context, in CreateUserInput) (*models.U
 	if u.Username == "" {
 		return nil, ErrUsernameRequired
 	}
-	if _, err := s.repo.GetByUsername(ctx, u.Username); err == nil {
-		return nil, ErrUsernameTaken
-	} else if err != nil && !repository.IsNotFound(err) {
-		return nil, err
-	}
-	if err := s.repo.Create(ctx, u); err != nil {
+	err = s.repo.DB().WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		txRepo := repository.NewUserRepository(tx)
+		if _, err := txRepo.GetByUsername(ctx, u.Username); err == nil {
+			return ErrUsernameTaken
+		} else if err != nil && !repository.IsNotFound(err) {
+			return err
+		}
+		if err := txRepo.Create(ctx, u); err != nil {
+			if repository.IsDuplicate(err) {
+				return ErrUsernameTaken
+			}
+			return err
+		}
+		return nil
+	})
+	if err != nil {
 		return nil, err
 	}
 	return u, nil
@@ -127,7 +142,17 @@ func (s *UserService) Update(ctx context.Context, id uuid.UUID, in UpdateUserInp
 		}
 		u.PasswordHash = string(hash)
 	}
-	if err := s.repo.Update(ctx, u); err != nil {
+	err = s.repo.DB().WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		txRepo := repository.NewUserRepository(tx)
+		if err := txRepo.Update(ctx, u); err != nil {
+			if repository.IsDuplicate(err) {
+				return ErrUsernameTaken
+			}
+			return err
+		}
+		return nil
+	})
+	if err != nil {
 		return nil, err
 	}
 	return u, nil

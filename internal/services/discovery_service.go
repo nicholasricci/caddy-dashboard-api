@@ -23,6 +23,7 @@ var (
 // discoveryRepository is satisfied by *repository.DiscoveryRepository; narrowed for tests.
 type discoveryRepository interface {
 	List(ctx context.Context) ([]models.DiscoveryConfig, error)
+	ListPaginated(ctx context.Context, limit, offset int) ([]models.DiscoveryConfig, int64, error)
 	GetByID(ctx context.Context, id uuid.UUID) (*models.DiscoveryConfig, error)
 	Create(ctx context.Context, cfg *models.DiscoveryConfig) error
 	Update(ctx context.Context, cfg *models.DiscoveryConfig) error
@@ -51,6 +52,10 @@ func NewDiscoveryService(repo discoveryRepository, nodeRepo discoveryNodeWriter,
 
 func (s *DiscoveryService) List(ctx context.Context) ([]models.DiscoveryConfig, error) {
 	return s.repo.List(ctx)
+}
+
+func (s *DiscoveryService) ListPaginated(ctx context.Context, limit, offset int) ([]models.DiscoveryConfig, int64, error) {
+	return s.repo.ListPaginated(ctx, limit, offset)
 }
 
 func (s *DiscoveryService) Get(ctx context.Context, id uuid.UUID) (*models.DiscoveryConfig, error) {

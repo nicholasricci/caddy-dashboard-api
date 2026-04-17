@@ -1,6 +1,6 @@
 # Caddy Dashboard MCP (development only)
 
-Local MCP server for Cursor: read the Swagger spec and run **safe** HTTP calls against the Go API (`GET /api/v1/*` and `POST` only on `/api/v1/auth/login` and `/api/v1/auth/refresh`). It does not start unless `CADDY_MCP_DEV=1`.
+Local MCP server for Cursor: read the Swagger spec and run **safe** HTTP calls against the Go API (`GET /api/v1/*` and `POST` only on `/api/v1/auth/login`, `/api/v1/auth/refresh`, `/api/v1/auth/logout`). It does not start unless `CADDY_MCP_DEV=1`.
 
 ## Build
 
@@ -48,7 +48,7 @@ Do **not** commit real tokens. Prefer user-level MCP settings or a local file ig
 |------|---------|
 | `get_openapi` | Full Swagger JSON from live `/swagger/doc.json` or `docs/swagger.json`. |
 | `list_api_operations` | Compact list of operations; optional filter string. |
-| `api_request` | Safe `GET`/`POST` as described above; blocks apply/reload/sync/discovery run paths. |
+| `api_request` | Safe `GET`/`POST` as described above; blocks apply/reload/sync/discovery run paths. Supports pagination query params like `?limit=20&offset=0`. |
 
 ## Security notes
 

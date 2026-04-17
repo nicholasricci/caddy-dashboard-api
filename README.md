@@ -5,13 +5,13 @@
 
 Backend API in Go (Gin) to manage Caddy nodes across AWS regions with:
 
-- JWT local authentication
+- JWT local authentication (access + revocable refresh)
 - Node discovery via EC2 tags
 - Manual node registration by private IP or instance ID
 - Caddy operations executed via AWS SSM Run Command
 - Configuration snapshots persisted in MariaDB (RDS)
 - Users persisted in MariaDB with roles (`admin`, `user`)
-- JWT signing secret loaded from `JWT_SECRET` environment variable
+- JWT signing secret loaded from `JWT_SECRET` environment variable (minimum 32 chars)
 
 ## Prerequisites
 
@@ -72,8 +72,26 @@ At minimum, set:
 - `DB_USER`
 - `DB_PASSWORD`
 - `AWS_REGIONS`
+- `JWT_ISSUER`
+- `JWT_AUDIENCE`
 
 See `.env.example` for the full list.
+
+## Health and readiness
+
+- `GET /api/v1/health`: liveness probe
+- `GET /api/v1/ready`: readiness probe (DB ping + AWS regions configured)
+
+## Database migrations
+
+- Use `make migrate` to run schema migrations from `cmd/migrate`.
+- API startup does not auto-migrate unless launched with `--auto-migrate`.
+
+## Rate limits and payload limits
+
+- Login/refresh endpoints are rate-limited by IP.
+- Caddy apply endpoint is rate-limited and has a larger request body limit.
+- Global request body limit applies to all routes by default.
 
 ## CI and release
 

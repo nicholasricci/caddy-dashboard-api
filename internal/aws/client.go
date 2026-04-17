@@ -3,6 +3,7 @@ package aws
 import (
 	"context"
 	"fmt"
+	"sync"
 
 	awsSDK "github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -12,7 +13,10 @@ import (
 )
 
 type MultiRegionClient struct {
-	configs map[string]awsSDK.Config
+	configs        map[string]awsSDK.Config
+	ec2Clients     sync.Map
+	ssmClients     sync.Map
+	secretsClients sync.Map
 }
 
 func NewMultiRegionClient(ctx context.Context, profile string, regions []string) (*MultiRegionClient, error) {
@@ -33,25 +37,40 @@ func NewMultiRegionClient(ctx context.Context, profile string, regions []string)
 }
 
 func (c *MultiRegionClient) EC2(region string) (*ec2.Client, error) {
+	if v, ok := c.ec2Clients.Load(region); ok {
+		return v.(*ec2.Client), nil
+	}
 	cfg, ok := c.configs[region]
 	if !ok {
 		return nil, fmt.Errorf("region %s is not configured", region)
 	}
-	return ec2.NewFromConfig(cfg), nil
+	client := ec2.NewFromConfig(cfg)
+	c.ec2Clients.Store(region, client)
+	return client, nil
 }
 
 func (c *MultiRegionClient) SSM(region string) (*ssm.Client, error) {
+	if v, ok := c.ssmClients.Load(region); ok {
+		return v.(*ssm.Client), nil
+	}
 	cfg, ok := c.configs[region]
 	if !ok {
 		return nil, fmt.Errorf("region %s is not configured", region)
 	}
-	return ssm.NewFromConfig(cfg), nil
+	client := ssm.NewFromConfig(cfg)
+	c.ssmClients.Store(region, client)
+	return client, nil
 }
 
 func (c *MultiRegionClient) SecretsManager(region string) (*secretsmanager.Client, error) {
+	if v, ok := c.secretsClients.Load(region); ok {
+		return v.(*secretsmanager.Client), nil
+	}
 	cfg, ok := c.configs[region]
 	if !ok {
 		return nil, fmt.Errorf("region %s is not configured", region)
 	}
-	return secretsmanager.NewFromConfig(cfg), nil
+	client := secretsmanager.NewFromConfig(cfg)
+	c.secretsClients.Store(region, client)
+	return client, nil
 }

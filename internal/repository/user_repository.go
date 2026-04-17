@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 
+	"github.com/go-sql-driver/mysql"
 	"github.com/google/uuid"
 	"github.com/nicholasricci/caddy-dashboard/internal/models"
 	"gorm.io/gorm"
@@ -19,8 +20,19 @@ func NewUserRepository(db *gorm.DB) *UserRepository {
 
 func (r *UserRepository) List(ctx context.Context) ([]models.User, error) {
 	var users []models.User
-	err := r.db.WithContext(ctx).Order("username asc").Find(&users).Error
+	err := r.db.WithContext(ctx).Order("username asc").Limit(100).Find(&users).Error
 	return users, err
+}
+
+func (r *UserRepository) ListPaginated(ctx context.Context, limit, offset int) ([]models.User, int64, error) {
+	var users []models.User
+	var total int64
+	q := r.db.WithContext(ctx).Model(&models.User{})
+	if err := q.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	err := q.Order("username asc").Limit(limit).Offset(offset).Find(&users).Error
+	return users, total, err
 }
 
 func (r *UserRepository) GetByID(ctx context.Context, id uuid.UUID) (*models.User, error) {
@@ -59,4 +71,13 @@ func (r *UserRepository) CountByRole(ctx context.Context, role string) (int64, e
 
 func IsNotFound(err error) bool {
 	return errors.Is(err, gorm.ErrRecordNotFound)
+}
+
+func IsDuplicate(err error) bool {
+	var myErr *mysql.MySQLError
+	return errors.As(err, &myErr) && myErr.Number == 1062
+}
+
+func (r *UserRepository) DB() *gorm.DB {
+	return r.db
 }

@@ -13,12 +13,13 @@ const (
 )
 
 type User struct {
-	ID           uuid.UUID `gorm:"type:char(36);primaryKey" json:"id"`
-	Username     string    `gorm:"size:120;uniqueIndex;not null" json:"username"`
-	PasswordHash string    `gorm:"size:255;not null" json:"-"`
-	Role         string    `gorm:"size:16;not null;default:'user'" json:"role"`
-	CreatedAt    time.Time `json:"created_at"`
-	UpdatedAt    time.Time `json:"updated_at"`
+	ID           uuid.UUID      `gorm:"type:char(36);primaryKey" json:"id"`
+	Username     string         `gorm:"size:120;uniqueIndex;not null" json:"username"`
+	PasswordHash string         `gorm:"size:255;not null" json:"-"`
+	Role         string         `gorm:"size:16;not null;default:'user'" json:"role"`
+	CreatedAt    time.Time      `json:"created_at"`
+	UpdatedAt    time.Time      `json:"updated_at"`
+	DeletedAt    gorm.DeletedAt `gorm:"index" json:"-"`
 }
 
 func (u *User) BeforeCreate(_ *gorm.DB) error {

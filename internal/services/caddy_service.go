@@ -38,3 +38,7 @@ func (s *CaddyService) Reload(ctx context.Context, nodeID uuid.UUID) error {
 func (s *CaddyService) ListSnapshots(ctx context.Context, nodeID uuid.UUID) ([]models.CaddySnapshot, error) {
 	return s.snapshots.ListByNodeID(ctx, nodeID)
 }
+
+func (s *CaddyService) ListSnapshotsPaginated(ctx context.Context, nodeID uuid.UUID, limit, offset int) ([]models.CaddySnapshot, int64, error) {
+	return s.snapshots.ListByNodeIDPaginated(ctx, nodeID, limit, offset)
+}

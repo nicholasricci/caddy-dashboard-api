@@ -62,9 +62,10 @@ tools/mcp-server/    # Server MCP Node/TS per Cursor (dev only)
 
 Endpoint principali (dettaglio in [`internal/api/routes/routes.go`](internal/api/routes/routes.go)):
 
-- Pubblici: `GET /api/v1/health`, `POST /api/v1/auth/login`, `POST /api/v1/auth/refresh`.
+- Pubblici: `GET /api/v1/health`, `GET /api/v1/ready`, `POST /api/v1/auth/login`, `POST /api/v1/auth/refresh`.
 - Protetti: CRUD/list nodi e discovery in lettura; `GET /nodes/:id/snapshots`.
-- Solo admin: creazione/aggiornamento/cancellazione nodi e discovery; `POST .../sync`, `/apply`, `/reload`; `POST /discovery/:id/run`; gestione utenti.
+- Protetti: `POST /api/v1/auth/logout`.
+- Solo admin: creazione/aggiornamento/cancellazione nodi e discovery; `POST .../sync`, `/apply`, `/reload`; `GET /nodes/:id/snapshots`; `POST /discovery/:id/run`; gestione utenti; `GET /audit`.
 
 ## Dominio funzionale
 
@@ -96,6 +97,7 @@ Sotto [`tools/mcp-server/`](tools/mcp-server/) c’è un server **MCP** per inte
 
 - Allinearsi a stile e strati esistenti: **handler** sottili, **services** con logica, **repository** per DB, **models** per GORM.
 - Nuove route documentate con **commenti Swaggo** (`// @Summary`, `@Router`, `@Security`, ecc.) e rigenerare `make swagger` quando si espone l’API pubblicamente.
+- Evitare binding diretto dei payload su `models.*` negli handler: usare DTO request/response dedicati.
 - Non introdurre segreti nel codice: usare env / Secrets Manager come da configurazione.
 - Test: `go test ./...`; per JWT/config esistono test in `internal/auth`, `internal/config`.
 
