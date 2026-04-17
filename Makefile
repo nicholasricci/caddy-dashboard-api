@@ -1,4 +1,4 @@
-.PHONY: run migrate build test lint fmt swagger swag-install mcp-build mcp-run docker-dev-build docker-dev-up docker-dev-down docker-dev-logs
+.PHONY: run migrate build test lint fmt vuln-install vuln swagger swag-install mcp-build mcp-run docker-dev-build docker-dev-up docker-dev-down docker-dev-logs
 
 run:
 	go run ./cmd/server
@@ -17,6 +17,12 @@ lint:
 
 fmt:
 	go fmt ./...
+
+vuln-install:
+	go install golang.org/x/vuln/cmd/govulncheck@latest
+
+vuln:
+	$$(go env GOPATH)/bin/govulncheck ./...
 
 swag-install:
 	go install github.com/swaggo/swag/cmd/swag@v1.8.12
