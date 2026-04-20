@@ -474,6 +474,53 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v1/discovery/{id}/snapshots": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns stored Caddy snapshots for a discovery group",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "discovery"
+                ],
+                "summary": "List discovery group snapshots",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Discovery config ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/health": {
             "get": {
                 "description": "Returns service health status",
@@ -1346,6 +1393,9 @@ const docTemplate = `{
                 "created_at": {
                     "type": "string"
                 },
+                "discovery_config_id": {
+                    "type": "string"
+                },
                 "id": {
                     "type": "string"
                 },
@@ -1399,6 +1449,18 @@ const docTemplate = `{
                 "region": {
                     "type": "string"
                 },
+                "snapshot_scope": {
+                    "enum": [
+                        "node",
+                        "group"
+                    ],
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/models.SnapshotScope"
+                        }
+                    ],
+                    "example": "node"
+                },
                 "tag_key": {
                     "type": "string"
                 },
@@ -1417,6 +1479,17 @@ const docTemplate = `{
                     "type": "string"
                 }
             }
+        },
+        "models.SnapshotScope": {
+            "type": "string",
+            "enum": [
+                "node",
+                "group"
+            ],
+            "x-enum-varnames": [
+                "SnapshotScopeNode",
+                "SnapshotScopeGroup"
+            ]
         },
         "models.User": {
             "type": "object",

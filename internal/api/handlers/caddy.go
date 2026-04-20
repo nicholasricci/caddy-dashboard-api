@@ -186,6 +186,10 @@ func (h *CaddyHandler) ListSnapshots(c *gin.Context) {
 	limit, offset := parseLimitOffset(c)
 	snapshots, total, err := h.svc.ListSnapshotsPaginated(c.Request.Context(), nodeID, limit, offset)
 	if err != nil {
+		if errors.Is(err, models.ErrNodeNotFound) {
+			c.JSON(http.StatusNotFound, models.ErrorResponse{Error: "node not found"})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "failed to list snapshots"})
 		return
 	}

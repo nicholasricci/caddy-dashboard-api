@@ -18,6 +18,7 @@ var (
 	ErrDiscoveryNotFound             = errors.New("discovery config not found")
 	ErrDiscoveryMethodNotImplemented = errors.New("discovery method not implemented yet")
 	ErrDiscoveryUnknownMethod        = errors.New("unknown discovery method")
+	ErrInvalidSnapshotScope          = errors.New("invalid snapshot scope")
 )
 
 // discoveryRepository is satisfied by *repository.DiscoveryRepository; narrowed for tests.
@@ -70,12 +71,16 @@ func (s *DiscoveryService) Get(ctx context.Context, id uuid.UUID) (*models.Disco
 }
 
 func (s *DiscoveryService) Create(ctx context.Context, cfg *models.DiscoveryConfig) error {
-	s.normalize(cfg)
+	if err := s.normalize(cfg); err != nil {
+		return err
+	}
 	return s.repo.Create(ctx, cfg)
 }
 
 func (s *DiscoveryService) Update(ctx context.Context, cfg *models.DiscoveryConfig) error {
-	s.normalize(cfg)
+	if err := s.normalize(cfg); err != nil {
+		return err
+	}
 	if _, err := s.repo.GetByID(ctx, cfg.ID); err != nil {
 		if repository.IsNotFound(err) {
 			return ErrDiscoveryNotFound
@@ -95,11 +100,18 @@ func (s *DiscoveryService) Delete(ctx context.Context, id uuid.UUID) error {
 	return s.repo.Delete(ctx, id)
 }
 
-func (s *DiscoveryService) normalize(cfg *models.DiscoveryConfig) {
+func (s *DiscoveryService) normalize(cfg *models.DiscoveryConfig) error {
 	cfg.Method = strings.TrimSpace(cfg.Method)
 	if cfg.Method == "" {
 		cfg.Method = models.DiscoveryMethodAWSTag
 	}
+
+	scope, err := models.ParseSnapshotScope(cfg.SnapshotScope.String())
+	if err != nil {
+		return fmt.Errorf("%w: %v", ErrInvalidSnapshotScope, err)
+	}
+	cfg.SnapshotScope = scope
+	return nil
 }
 
 func (s *DiscoveryService) Run(ctx context.Context, id uuid.UUID) (int, error) {
@@ -110,7 +122,9 @@ func (s *DiscoveryService) Run(ctx context.Context, id uuid.UUID) (int, error) {
 		}
 		return 0, err
 	}
-	s.normalize(cfg)
+	if err := s.normalize(cfg); err != nil {
+		return 0, err
+	}
 
 	var nodes []models.CaddyNode
 	switch cfg.Method {
@@ -135,10 +149,11 @@ func (s *DiscoveryService) Run(ctx context.Context, id uuid.UUID) (int, error) {
 		return 0, fmt.Errorf("%w: %q", ErrDiscoveryUnknownMethod, cfg.Method)
 	}
 
+	cfgID := cfg.ID
 	for i := range nodes {
-		n := nodes[i]
-		if err := s.nodeRepo.UpsertByInstanceOrIP(ctx, &n); err != nil {
-			return 0, err
+		nodes[i].DiscoveryConfigID = &cfgID
+		if err := s.nodeRepo.UpsertByInstanceOrIP(ctx, &nodes[i]); err != nil {
+			return 0, fmt.Errorf("upsert discovered node %q: %w", nodes[i].Name, err)
 		}
 	}
 	return len(nodes), nil

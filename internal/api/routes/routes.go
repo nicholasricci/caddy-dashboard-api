@@ -74,6 +74,7 @@ func NewRouter(dep Dependencies) *gin.Engine {
 	admin.PUT("/discovery/:id", dep.DiscoveryHandler.Update)
 	admin.DELETE("/discovery/:id", dep.DiscoveryHandler.Delete)
 	admin.POST("/discovery/:id/run", dep.DiscoveryHandler.Run)
+	admin.GET("/discovery/:id/snapshots", dep.DiscoveryHandler.ListSnapshots)
 
 	admin.GET("/users", dep.UserHandler.List)
 	admin.GET("/users/:id", dep.UserHandler.Get)

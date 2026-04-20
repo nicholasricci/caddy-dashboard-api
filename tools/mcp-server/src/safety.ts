@@ -59,7 +59,8 @@ export function normalizePath(p: string): string {
 }
 
 /**
- * Block high-impact paths even for GET (defense in depth).
+ * Block high-impact mutation paths even for GET (defense in depth).
+ * Read-only endpoints such as /api/v1/discovery/{id}/snapshots remain allowed.
  */
 export function isDenylistedPath(pathname: string): boolean {
   const lower = pathname.toLowerCase();

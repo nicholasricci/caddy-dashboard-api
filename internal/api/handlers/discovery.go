@@ -13,22 +13,24 @@ import (
 )
 
 type DiscoveryHandler struct {
-	svc   *services.DiscoveryService
-	audit *services.AuditService
+	svc      *services.DiscoveryService
+	caddySvc *services.CaddyService
+	audit    *services.AuditService
 }
 
 type discoveryWriteRequest struct {
-	Name       string          `json:"name" binding:"required"`
-	Method     string          `json:"method"`
-	Region     string          `json:"region" binding:"required"`
-	TagKey     string          `json:"tag_key"`
-	TagValue   string          `json:"tag_value"`
-	Parameters json.RawMessage `json:"parameters"`
-	Enabled    *bool           `json:"enabled"`
+	Name          string          `json:"name" binding:"required"`
+	Method        string          `json:"method"`
+	Region        string          `json:"region" binding:"required"`
+	TagKey        string          `json:"tag_key"`
+	TagValue      string          `json:"tag_value"`
+	Parameters    json.RawMessage `json:"parameters"`
+	SnapshotScope string          `json:"snapshot_scope"`
+	Enabled       *bool           `json:"enabled"`
 }
 
-func NewDiscoveryHandler(svc *services.DiscoveryService, audit *services.AuditService) *DiscoveryHandler {
-	return &DiscoveryHandler{svc: svc, audit: audit}
+func NewDiscoveryHandler(svc *services.DiscoveryService, caddySvc *services.CaddyService, audit *services.AuditService) *DiscoveryHandler {
+	return &DiscoveryHandler{svc: svc, caddySvc: caddySvc, audit: audit}
 }
 
 // List godoc
@@ -95,13 +97,19 @@ func (h *DiscoveryHandler) Create(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "invalid request body"})
 		return
 	}
+	snapshotScope, err := models.ParseSnapshotScope(req.SnapshotScope)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "snapshot_scope must be one of: node, group"})
+		return
+	}
 	cfg := models.DiscoveryConfig{
-		Name:       strings.TrimSpace(req.Name),
-		Method:     strings.TrimSpace(req.Method),
-		Region:     strings.TrimSpace(req.Region),
-		TagKey:     strings.TrimSpace(req.TagKey),
-		TagValue:   strings.TrimSpace(req.TagValue),
-		Parameters: req.Parameters,
+		Name:          strings.TrimSpace(req.Name),
+		Method:        strings.TrimSpace(req.Method),
+		Region:        strings.TrimSpace(req.Region),
+		TagKey:        strings.TrimSpace(req.TagKey),
+		TagValue:      strings.TrimSpace(req.TagValue),
+		Parameters:    req.Parameters,
+		SnapshotScope: snapshotScope,
 	}
 	if req.Enabled != nil {
 		cfg.Enabled = *req.Enabled
@@ -109,6 +117,10 @@ func (h *DiscoveryHandler) Create(c *gin.Context) {
 		cfg.Enabled = true
 	}
 	if err := h.svc.Create(c.Request.Context(), &cfg); err != nil {
+		if errors.Is(err, services.ErrInvalidSnapshotScope) {
+			c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "snapshot_scope must be one of: node, group"})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "failed to create discovery config"})
 		return
 	}
@@ -139,14 +151,20 @@ func (h *DiscoveryHandler) Update(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "invalid request body"})
 		return
 	}
+	snapshotScope, err := models.ParseSnapshotScope(req.SnapshotScope)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "snapshot_scope must be one of: node, group"})
+		return
+	}
 	cfg := models.DiscoveryConfig{
-		ID:         id,
-		Name:       strings.TrimSpace(req.Name),
-		Method:     strings.TrimSpace(req.Method),
-		Region:     strings.TrimSpace(req.Region),
-		TagKey:     strings.TrimSpace(req.TagKey),
-		TagValue:   strings.TrimSpace(req.TagValue),
-		Parameters: req.Parameters,
+		ID:            id,
+		Name:          strings.TrimSpace(req.Name),
+		Method:        strings.TrimSpace(req.Method),
+		Region:        strings.TrimSpace(req.Region),
+		TagKey:        strings.TrimSpace(req.TagKey),
+		TagValue:      strings.TrimSpace(req.TagValue),
+		Parameters:    req.Parameters,
+		SnapshotScope: snapshotScope,
 	}
 	if req.Enabled != nil {
 		cfg.Enabled = *req.Enabled
@@ -154,6 +172,10 @@ func (h *DiscoveryHandler) Update(c *gin.Context) {
 		cfg.Enabled = true
 	}
 	if err := h.svc.Update(c.Request.Context(), &cfg); err != nil {
+		if errors.Is(err, services.ErrInvalidSnapshotScope) {
+			c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "snapshot_scope must be one of: node, group"})
+			return
+		}
 		if errors.Is(err, services.ErrDiscoveryNotFound) {
 			c.JSON(http.StatusNotFound, models.ErrorResponse{Error: "discovery config not found"})
 			return
@@ -229,4 +251,38 @@ func (h *DiscoveryHandler) Run(c *gin.Context) {
 	}
 	_ = h.audit.Record(c.Request.Context(), c.GetString("username"), "run", "discovery", id.String(), gin.H{"discovered_nodes": count})
 	c.JSON(http.StatusOK, gin.H{"discovered_nodes": count})
+}
+
+// ListSnapshots godoc
+// @Summary List discovery group snapshots
+// @Description Returns stored Caddy snapshots for a discovery group
+// @Tags discovery
+// @Produce json
+// @Param id path string true "Discovery config ID"
+// @Success 200 {object} map[string]interface{}
+// @Failure 400 {object} models.ErrorResponse
+// @Failure 500 {object} models.ErrorResponse
+// @Security BearerAuth
+// @Router /api/v1/discovery/{id}/snapshots [get]
+func (h *DiscoveryHandler) ListSnapshots(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "invalid discovery id"})
+		return
+	}
+	if _, err := h.svc.Get(c.Request.Context(), id); err != nil {
+		if errors.Is(err, services.ErrDiscoveryNotFound) {
+			c.JSON(http.StatusNotFound, models.ErrorResponse{Error: "discovery config not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "failed to load discovery config"})
+		return
+	}
+	limit, offset := parseLimitOffset(c)
+	snapshots, total, err := h.caddySvc.ListDiscoverySnapshotsPaginated(c.Request.Context(), id, limit, offset)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "failed to list snapshots"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"items": snapshots, "meta": models.PaginationMeta{Total: total, Limit: limit, Offset: offset}})
 }

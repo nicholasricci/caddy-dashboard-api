@@ -9,7 +9,7 @@ Backend API in Go (Gin) to manage Caddy nodes across AWS regions with:
 - Node discovery via EC2 tags
 - Manual node registration by private IP or instance ID
 - Caddy operations executed via AWS SSM Run Command
-- Configuration snapshots persisted in MariaDB (RDS)
+- Configuration snapshots persisted in MariaDB (RDS), scoped by node or by discovery group (`snapshot_scope`)
 - Users persisted in MariaDB with roles (`admin`, `user`)
 - JWT signing secret loaded from `JWT_SECRET` environment variable (minimum 32 chars)
 
@@ -62,6 +62,8 @@ make swagger
 ## API prefix
 
 All APIs are under `/api/v1`.
+
+Discovery snapshots are available via `GET /api/v1/discovery/:id/snapshots`; node snapshots (`GET /api/v1/nodes/:id/snapshots`) remain available and automatically resolve to group snapshots when the related discovery uses `snapshot_scope=group`.
 
 ## Required environment variables
 

@@ -63,15 +63,15 @@ tools/mcp-server/    # Server MCP Node/TS per Cursor (dev only)
 Endpoint principali (dettaglio in [`internal/api/routes/routes.go`](internal/api/routes/routes.go)):
 
 - Pubblici: `GET /api/v1/health`, `GET /api/v1/ready`, `POST /api/v1/auth/login`, `POST /api/v1/auth/refresh`.
-- Protetti: CRUD/list nodi e discovery in lettura; `GET /nodes/:id/snapshots`.
+- Protetti: CRUD/list nodi e discovery in lettura.
 - Protetti: `POST /api/v1/auth/logout`.
-- Solo admin: creazione/aggiornamento/cancellazione nodi e discovery; `POST .../sync`, `/apply`, `/reload`; `GET /nodes/:id/snapshots`; `POST /discovery/:id/run`; gestione utenti; `GET /audit`.
+- Solo admin: creazione/aggiornamento/cancellazione nodi e discovery; `POST .../sync`, `/apply`, `/reload`; `GET /nodes/:id/snapshots`; `GET /discovery/:id/snapshots`; `POST /discovery/:id/run`; gestione utenti; `GET /audit`.
 
 ## Dominio funzionale
 
 - **Nodo (`CaddyNode`)**: istanza/registrazione con IP privato, instance ID, regione, stato, flag SSM, ecc.
 - **Discovery (`DiscoveryConfig`)**: regole per trovare nodi (metodi documentati in Swagger; alcuni possono essere non implementati — vedere errori `501` / messaggi servizio).
-- **Snapshot**: versioni di configurazione Caddy persistite dopo sync/apply.
+- **Snapshot**: versioni di configurazione Caddy persistite dopo sync/apply, con scope configurabile per `DiscoveryConfig` (`node` o `group`).
 - **Utenti**: username, ruolo, password hash; JWT emessi al login.
 
 Operazioni Caddy lato macchina remota avvengono tramite **SSM** (non SSH diretto dall’API).

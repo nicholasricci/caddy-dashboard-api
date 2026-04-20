@@ -77,17 +77,23 @@ func main() {
 	snapshotRepo := repository.NewSnapshotRepository(db)
 	userRepo := repository.NewUserRepository(db)
 
+	if rows, err := snapshotRepo.BackfillDiscoveryConfigIDs(ctx); err != nil {
+		log.Warn("snapshot discovery group backfill failed", zap.Error(err))
+	} else if rows > 0 {
+		log.Info("snapshot discovery group backfill applied", zap.Int64("rows", rows))
+	}
+
 	refreshRepo := repository.NewRefreshTokenRepository(db)
 	auditRepo := repository.NewAuditRepository(db)
 	authSvc := auth.NewService(cfg.Auth, userRepo, refreshRepo)
 	ec2Svc := awssvc.NewEC2Service(awsClients)
 	ssmSvc := awssvc.NewSSMService(awsClients)
 	executor := caddysvc.NewSSMExecutor(ssmSvc)
-	internalCaddySvc := caddysvc.NewService(nodeRepo, snapshotRepo, executor)
+	internalCaddySvc := caddysvc.NewService(nodeRepo, discoveryRepo, snapshotRepo, executor)
 
 	nodeSvc := services.NewNodeService(nodeRepo)
 	discoverySvc := services.NewDiscoveryService(discoveryRepo, nodeRepo, ec2Svc, ssmSvc)
-	caddySvc := services.NewCaddyService(internalCaddySvc, snapshotRepo)
+	caddySvc := services.NewCaddyService(internalCaddySvc, nodeRepo, discoveryRepo, snapshotRepo)
 	userSvc := services.NewUserService(userRepo)
 	auditSvc := services.NewAuditService(auditRepo)
 
@@ -108,7 +114,7 @@ func main() {
 		},
 	)
 	nodeHandler := handlers.NewNodeHandler(nodeSvc, auditSvc)
-	discoveryHandler := handlers.NewDiscoveryHandler(discoverySvc, auditSvc)
+	discoveryHandler := handlers.NewDiscoveryHandler(discoverySvc, caddySvc, auditSvc)
 	caddyHandler := handlers.NewCaddyHandler(caddySvc, auditSvc)
 	userHandler := handlers.NewUserHandler(userSvc, auditSvc)
 	auditHandler := handlers.NewAuditHandler(auditSvc)

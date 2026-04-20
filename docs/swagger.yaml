@@ -56,6 +56,8 @@ definitions:
     properties:
       created_at:
         type: string
+      discovery_config_id:
+        type: string
       id:
         type: string
       instance_id:
@@ -91,6 +93,13 @@ definitions:
         type: object
       region:
         type: string
+      snapshot_scope:
+        allOf:
+        - $ref: '#/definitions/models.SnapshotScope'
+        enum:
+        - node
+        - group
+        example: node
       tag_key:
         type: string
       tag_value:
@@ -103,6 +112,14 @@ definitions:
       error:
         type: string
     type: object
+  models.SnapshotScope:
+    enum:
+    - node
+    - group
+    type: string
+    x-enum-varnames:
+    - SnapshotScopeNode
+    - SnapshotScopeGroup
   models.User:
     properties:
       created_at:
@@ -412,6 +429,36 @@ paths:
       security:
       - BearerAuth: []
       summary: Run discovery
+      tags:
+      - discovery
+  /api/v1/discovery/{id}/snapshots:
+    get:
+      description: Returns stored Caddy snapshots for a discovery group
+      parameters:
+      - description: Discovery config ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List discovery group snapshots
       tags:
       - discovery
   /api/v1/health:

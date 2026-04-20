@@ -48,7 +48,9 @@ Do **not** commit real tokens. Prefer user-level MCP settings or a local file ig
 |------|---------|
 | `get_openapi` | Full Swagger JSON from live `/swagger/doc.json` or `docs/swagger.json`. |
 | `list_api_operations` | Compact list of operations; optional filter string. |
-| `api_request` | Safe `GET`/`POST` as described above; blocks apply/reload/sync/discovery run paths. Supports pagination query params like `?limit=20&offset=0`. |
+| `api_request` | Safe `GET`/`POST` as described above; blocks apply/reload/sync/discovery run paths. Supports pagination query params like `?limit=20&offset=0`, including discovery snapshot reads such as `/api/v1/discovery/{id}/snapshots`. |
+
+When you refresh the OpenAPI spec after backend changes, `snapshot_scope` on discovery payloads and discovery-group snapshot routes are available through `get_openapi` and `list_api_operations`.
 
 ## Security notes
 

@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 
@@ -9,6 +10,20 @@ import (
 	"github.com/nicholasricci/caddy-dashboard/internal/models"
 	"gorm.io/gorm"
 )
+
+type fakeDiscoveryNodeWriter struct {
+	upserted []*models.CaddyNode
+	err      error
+}
+
+func (f *fakeDiscoveryNodeWriter) UpsertByInstanceOrIP(_ context.Context, node *models.CaddyNode) error {
+	if f.err != nil {
+		return f.err
+	}
+	copyNode := *node
+	f.upserted = append(f.upserted, &copyNode)
+	return nil
+}
 
 type fakeDiscoveryRepo struct {
 	cfg *models.DiscoveryConfig
@@ -79,5 +94,55 @@ func TestDiscoveryService_Run_AwsCIDRNotImplemented(t *testing.T) {
 	_, err := svc.Run(context.Background(), cfg.ID)
 	if !errors.Is(err, ErrDiscoveryMethodNotImplemented) {
 		t.Fatalf("Run: got %v, want ErrDiscoveryMethodNotImplemented", err)
+	}
+}
+
+func TestDiscoveryService_Create_DefaultSnapshotScope(t *testing.T) {
+	repo := &fakeDiscoveryRepo{}
+	svc := NewDiscoveryService(repo, nil, nil, nil)
+	cfg := &models.DiscoveryConfig{
+		ID:     uuid.New(),
+		Name:   "d1",
+		Method: models.DiscoveryMethodAWSTag,
+		Region: "eu-west-1",
+	}
+	if err := svc.Create(context.Background(), cfg); err == nil {
+		t.Fatal("Create: expected fake repo error")
+	}
+	if cfg.SnapshotScope != models.SnapshotScopeNode {
+		t.Fatalf("Create: snapshot_scope=%q, want %q", cfg.SnapshotScope, models.SnapshotScopeNode)
+	}
+}
+
+func TestDiscoveryService_Run_StaticIP_AssignsDiscoveryConfigID(t *testing.T) {
+	cfgID := uuid.New()
+	params, _ := json.Marshal(map[string]any{
+		"endpoints": []map[string]string{
+			{"private_ip": "10.0.0.10", "name": "node-a"},
+		},
+	})
+	cfg := &models.DiscoveryConfig{
+		ID:         cfgID,
+		Name:       "static",
+		Method:     models.DiscoveryMethodStaticIP,
+		Region:     "eu-west-1",
+		Parameters: params,
+	}
+	writer := &fakeDiscoveryNodeWriter{}
+	svc := NewDiscoveryService(&fakeDiscoveryRepo{cfg: cfg}, writer, nil, nil)
+
+	n, err := svc.Run(context.Background(), cfgID)
+	if err != nil {
+		t.Fatalf("Run: unexpected error: %v", err)
+	}
+	if n != 1 {
+		t.Fatalf("Run: discovered=%d, want 1", n)
+	}
+	if len(writer.upserted) != 1 {
+		t.Fatalf("upserts=%d, want 1", len(writer.upserted))
+	}
+	got := writer.upserted[0].DiscoveryConfigID
+	if got == nil || *got != cfgID {
+		t.Fatalf("DiscoveryConfigID=%v, want %s", got, cfgID)
 	}
 }
