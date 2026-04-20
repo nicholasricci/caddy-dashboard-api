@@ -65,6 +65,8 @@ All APIs are under `/api/v1`.
 
 Discovery snapshots are available via `GET /api/v1/discovery/:id/snapshots`; node snapshots (`GET /api/v1/nodes/:id/snapshots`) remain available and automatically resolve to group snapshots when the related discovery uses `snapshot_scope=group`.
 
+Admin operators can re-run legacy snapshot backfill on demand with `POST /api/v1/snapshots/backfill` (rate-limited).
+
 ## Required environment variables
 
 At minimum, set:

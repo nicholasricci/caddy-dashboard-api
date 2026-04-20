@@ -66,6 +66,7 @@ Endpoint principali (dettaglio in [`internal/api/routes/routes.go`](internal/api
 - Protetti: CRUD/list nodi e discovery in lettura.
 - Protetti: `POST /api/v1/auth/logout`.
 - Solo admin: creazione/aggiornamento/cancellazione nodi e discovery; `POST .../sync`, `/apply`, `/reload`; `GET /nodes/:id/snapshots`; `GET /discovery/:id/snapshots`; `POST /discovery/:id/run`; gestione utenti; `GET /audit`.
+- Solo admin: endpoint operativo `POST /api/v1/snapshots/backfill` per rilanciare on-demand il backfill `discovery_config_id` sugli snapshot legacy (idempotente, rate-limited).
 
 ## Dominio funzionale
 

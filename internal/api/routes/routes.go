@@ -27,6 +27,7 @@ type Dependencies struct {
 	CaddyHandler       *handlers.CaddyHandler
 	UserHandler        *handlers.UserHandler
 	AuditHandler       *handlers.AuditHandler
+	AdminHandler       *handlers.AdminHandler
 }
 
 func NewRouter(dep Dependencies) *gin.Engine {
@@ -58,6 +59,7 @@ func NewRouter(dep Dependencies) *gin.Engine {
 	protected.GET("/discovery/:id", dep.DiscoveryHandler.Get)
 
 	applyLimiter := middleware.NewLimiterStore(rate.Every(time.Second), 1)
+	backfillLimiter := middleware.NewLimiterStore(rate.Every(30*time.Second), 1)
 	admin := protected.Group("")
 	admin.Use(middleware.RequireAdmin())
 	admin.POST("/nodes", dep.NodeHandler.Create)
@@ -82,6 +84,7 @@ func NewRouter(dep Dependencies) *gin.Engine {
 	admin.PUT("/users/:id", dep.UserHandler.Update)
 	admin.DELETE("/users/:id", dep.UserHandler.Delete)
 	admin.GET("/audit", dep.AuditHandler.List)
+	admin.POST("/snapshots/backfill", middleware.RateLimitByIP(backfillLimiter), dep.AdminHandler.BackfillSnapshots)
 
 	return r
 }

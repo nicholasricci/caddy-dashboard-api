@@ -63,14 +63,18 @@ func (r *SnapshotRepository) ListByDiscoveryConfigIDPaginated(ctx context.Contex
 	return snapshots, total, err
 }
 
-// BackfillDiscoveryConfigIDs fills missing discovery_config_id on legacy snapshots when:
-// - snapshot is linked to a node;
-// - node has discovery_config_id;
-// - related discovery config uses group snapshot scope.
-// The statement is idempotent and can be safely re-run. Soft-deleted configs/nodes are skipped.
-// The function is a no-op when the discovery_config_id column does not yet exist on caddy_snapshots,
-// so a binary deployed before the schema migration does not fail at startup.
-// MySQL/MariaDB-specific multi-table UPDATE syntax.
+// BackfillDiscoveryConfigIDs fills missing discovery_config_id on legacy snapshots using
+// DBMS-agnostic GORM queries (pluck group configs, pluck nodes per config, update
+// snapshots in batch per config). The operation is idempotent and safe to re-run.
+// Soft-deleted configs/nodes are excluded by GORM's DeletedAt filter.
+//
+// The function is a no-op when required columns do not exist yet, so a binary
+// deployed before schema migration does not fail at startup.
+//
+// Note: this is no longer a single atomic SQL statement. The function wraps all
+// operations in a transaction for a consistent read snapshot. If a discovery
+// config changes snapshot_scope while this runs, affected rows may still be
+// backfilled with the previously observed scope. Re-running remains safe.
 func (r *SnapshotRepository) BackfillDiscoveryConfigIDs(ctx context.Context) (int64, error) {
 	if !r.db.Migrator().HasColumn(&models.CaddySnapshot{}, "discovery_config_id") {
 		return 0, nil
@@ -81,17 +85,40 @@ func (r *SnapshotRepository) BackfillDiscoveryConfigIDs(ctx context.Context) (in
 	if !r.db.Migrator().HasColumn(&models.DiscoveryConfig{}, "snapshot_scope") {
 		return 0, nil
 	}
-	stmt := `
-UPDATE caddy_snapshots s
-JOIN caddy_nodes n ON s.node_id = n.id
-JOIN discovery_configs d ON n.discovery_config_id = d.id
-SET s.discovery_config_id = n.discovery_config_id
-WHERE s.discovery_config_id IS NULL
-  AND s.node_id IS NOT NULL
-  AND n.discovery_config_id IS NOT NULL
-  AND n.deleted_at IS NULL
-  AND d.deleted_at IS NULL
-  AND d.snapshot_scope = ?`
-	res := r.db.WithContext(ctx).Exec(stmt, models.SnapshotScopeGroup)
-	return res.RowsAffected, res.Error
+
+	var totalUpdated int64
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var groupCfgIDs []uuid.UUID
+		if err := tx.Model(&models.DiscoveryConfig{}).
+			Where("snapshot_scope = ?", models.SnapshotScopeGroup).
+			Pluck("id", &groupCfgIDs).Error; err != nil {
+			return err
+		}
+
+		for _, cfgID := range groupCfgIDs {
+			var nodeIDs []uuid.UUID
+			if err := tx.Model(&models.CaddyNode{}).
+				Where("discovery_config_id = ?", cfgID).
+				Pluck("id", &nodeIDs).Error; err != nil {
+				return err
+			}
+			// Keep this guard: some drivers produce invalid SQL for empty IN clauses.
+			if len(nodeIDs) == 0 {
+				continue
+			}
+
+			res := tx.Model(&models.CaddySnapshot{}).
+				Where("discovery_config_id IS NULL AND node_id IN ?", nodeIDs).
+				Update("discovery_config_id", cfgID)
+			if res.Error != nil {
+				return res.Error
+			}
+			totalUpdated += res.RowsAffected
+		}
+		return nil
+	})
+	if err != nil {
+		return 0, err
+	}
+	return totalUpdated, nil
 }

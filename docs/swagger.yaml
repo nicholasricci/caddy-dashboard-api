@@ -52,6 +52,15 @@ definitions:
       username:
         type: string
     type: object
+  models.BackfillSnapshotsResponse:
+    properties:
+      duration_ms:
+        example: 123
+        type: integer
+      rows_updated:
+        example: 42
+        type: integer
+    type: object
   models.CaddyNode:
     properties:
       created_at:
@@ -827,6 +836,27 @@ paths:
       summary: Readiness check
       tags:
       - health
+  /api/v1/snapshots/backfill:
+    post:
+      description: |-
+        Reassigns discovery_config_id on legacy node-scoped snapshots for discovery configs using snapshot_scope=group.
+        Idempotent and safe to re-run. Endpoint is admin-only and rate-limited.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.BackfillSnapshotsResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Re-run snapshot discovery backfill
+      tags:
+      - admin
   /api/v1/users:
     get:
       produces:

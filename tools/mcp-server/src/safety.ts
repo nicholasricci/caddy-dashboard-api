@@ -4,6 +4,7 @@ import path from "node:path";
 const AUTH_LOGIN = "/api/v1/auth/login";
 const AUTH_REFRESH = "/api/v1/auth/refresh";
 const AUTH_LOGOUT = "/api/v1/auth/logout";
+const SNAPSHOTS_BACKFILL = "/api/v1/snapshots/backfill";
 
 /** Hostnames allowed when MCP_ALLOW_NON_LOCALHOST is not set */
 const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "::1"]);
@@ -87,11 +88,11 @@ export function validateHttpRequest(method: string, pathname: string): void {
   }
 
   if (m === "POST") {
-    if (p === AUTH_LOGIN || p === AUTH_REFRESH || p === AUTH_LOGOUT) {
+    if (p === AUTH_LOGIN || p === AUTH_REFRESH || p === AUTH_LOGOUT || p === SNAPSHOTS_BACKFILL) {
       return;
     }
     throw new Error(
-      `POST is only allowed on ${AUTH_LOGIN}, ${AUTH_REFRESH}, and ${AUTH_LOGOUT}, got ${p}`,
+      `POST is only allowed on ${AUTH_LOGIN}, ${AUTH_REFRESH}, ${AUTH_LOGOUT}, and ${SNAPSHOTS_BACKFILL}, got ${p}`,
     );
   }
 

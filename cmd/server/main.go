@@ -118,6 +118,7 @@ func main() {
 	caddyHandler := handlers.NewCaddyHandler(caddySvc, auditSvc)
 	userHandler := handlers.NewUserHandler(userSvc, auditSvc)
 	auditHandler := handlers.NewAuditHandler(auditSvc)
+	adminHandler := handlers.NewAdminHandler(snapshotRepo, auditSvc, log)
 
 	router := routes.NewRouter(routes.Dependencies{
 		Logger:             log,
@@ -133,6 +134,7 @@ func main() {
 		CaddyHandler:       caddyHandler,
 		UserHandler:        userHandler,
 		AuditHandler:       auditHandler,
+		AdminHandler:       adminHandler,
 	})
 
 	srv := &http.Server{

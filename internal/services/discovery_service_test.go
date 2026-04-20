@@ -57,43 +57,52 @@ func (f *fakeDiscoveryRepo) Delete(context.Context, uuid.UUID) error {
 	return errors.New("fakeDiscoveryRepo: Delete not implemented")
 }
 
-func TestDiscoveryService_Run_ConfigNotFound(t *testing.T) {
-	svc := NewDiscoveryService(&fakeDiscoveryRepo{err: gorm.ErrRecordNotFound}, nil, nil, nil)
-	_, err := svc.Run(context.Background(), uuid.New())
-	if !errors.Is(err, ErrDiscoveryNotFound) {
-		t.Fatalf("Run: got %v, want ErrDiscoveryNotFound", err)
+func TestDiscoveryService_Run_Errors(t *testing.T) {
+	tests := []struct {
+		name    string
+		repo    *fakeDiscoveryRepo
+		wantErr error
+	}{
+		{
+			name:    "config not found",
+			repo:    &fakeDiscoveryRepo{err: gorm.ErrRecordNotFound},
+			wantErr: ErrDiscoveryNotFound,
+		},
+		{
+			name: "unknown method",
+			repo: &fakeDiscoveryRepo{cfg: &models.DiscoveryConfig{
+				ID:       uuid.New(),
+				Name:     "test",
+				Method:   "not_a_real_method",
+				Region:   "eu-west-1",
+				TagKey:   "k",
+				TagValue: "v",
+			}},
+			wantErr: ErrDiscoveryUnknownMethod,
+		},
+		{
+			name: "aws cidr not implemented",
+			repo: &fakeDiscoveryRepo{cfg: &models.DiscoveryConfig{
+				ID:       uuid.New(),
+				Name:     "cidr",
+				Method:   models.DiscoveryMethodAWSCIDR,
+				Region:   "eu-west-1",
+				TagKey:   "k",
+				TagValue: "v",
+			}},
+			wantErr: ErrDiscoveryMethodNotImplemented,
+		},
 	}
-}
 
-func TestDiscoveryService_Run_UnknownMethod(t *testing.T) {
-	cfg := &models.DiscoveryConfig{
-		ID:       uuid.New(),
-		Name:     "test",
-		Method:   "not_a_real_method",
-		Region:   "eu-west-1",
-		TagKey:   "k",
-		TagValue: "v",
-	}
-	svc := NewDiscoveryService(&fakeDiscoveryRepo{cfg: cfg}, nil, nil, nil)
-	_, err := svc.Run(context.Background(), cfg.ID)
-	if !errors.Is(err, ErrDiscoveryUnknownMethod) {
-		t.Fatalf("Run: got %v, want ErrDiscoveryUnknownMethod", err)
-	}
-}
-
-func TestDiscoveryService_Run_AwsCIDRNotImplemented(t *testing.T) {
-	cfg := &models.DiscoveryConfig{
-		ID:       uuid.New(),
-		Name:     "cidr",
-		Method:   models.DiscoveryMethodAWSCIDR,
-		Region:   "eu-west-1",
-		TagKey:   "k",
-		TagValue: "v",
-	}
-	svc := NewDiscoveryService(&fakeDiscoveryRepo{cfg: cfg}, nil, nil, nil)
-	_, err := svc.Run(context.Background(), cfg.ID)
-	if !errors.Is(err, ErrDiscoveryMethodNotImplemented) {
-		t.Fatalf("Run: got %v, want ErrDiscoveryMethodNotImplemented", err)
+	for _, tc := range tests {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			svc := NewDiscoveryService(tc.repo, nil, nil, nil)
+			_, err := svc.Run(context.Background(), uuid.New())
+			if !errors.Is(err, tc.wantErr) {
+				t.Fatalf("Run: got %v, want %v", err, tc.wantErr)
+			}
+		})
 	}
 }
 

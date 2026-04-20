@@ -99,9 +99,9 @@ server.registerTool(
   "api_request",
   {
     description:
-      "Safe HTTP call to the dev API: GET under /api/v1/ only, or POST only for /api/v1/auth/login, /api/v1/auth/refresh, and /api/v1/auth/logout. This includes read-only discovery snapshot paths like /api/v1/discovery/{id}/snapshots and /api/v1/nodes/{id}/snapshots. Host must be localhost/127.0.0.1 unless MCP_ALLOW_NON_LOCALHOST=1. Optional Bearer from CADDY_API_TOKEN. High-impact paths (apply, reload, sync, discovery run) are blocked.",
+      "Safe HTTP call to the dev API: GET under /api/v1/ only, or POST only for /api/v1/auth/login, /api/v1/auth/refresh, /api/v1/auth/logout, and /api/v1/snapshots/backfill. This includes read-only discovery snapshot paths like /api/v1/discovery/{id}/snapshots and /api/v1/nodes/{id}/snapshots. Host must be localhost/127.0.0.1 unless MCP_ALLOW_NON_LOCALHOST=1. Optional Bearer from CADDY_API_TOKEN. High-impact paths (apply, reload, sync, discovery run) are blocked.",
     inputSchema: {
-      method: z.enum(["GET", "POST"]).describe("Only GET or POST (POST limited to auth login/refresh/logout)."),
+      method: z.enum(["GET", "POST"]).describe("Only GET or POST (POST limited to auth login/refresh/logout and snapshots backfill)."),
       path: z
         .string()
         .describe("URL path starting with /, e.g. /api/v1/nodes"),

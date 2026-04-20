@@ -1093,6 +1093,37 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v1/snapshots/backfill": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Reassigns discovery_config_id on legacy node-scoped snapshots for discovery configs using snapshot_scope=group.\nIdempotent and safe to re-run. Endpoint is admin-only and rate-limited.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Re-run snapshot discovery backfill",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.BackfillSnapshotsResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/users": {
             "get": {
                 "security": [
@@ -1384,6 +1415,19 @@ const docTemplate = `{
                 },
                 "username": {
                     "type": "string"
+                }
+            }
+        },
+        "models.BackfillSnapshotsResponse": {
+            "type": "object",
+            "properties": {
+                "duration_ms": {
+                    "type": "integer",
+                    "example": 123
+                },
+                "rows_updated": {
+                    "type": "integer",
+                    "example": 42
                 }
             }
         },
