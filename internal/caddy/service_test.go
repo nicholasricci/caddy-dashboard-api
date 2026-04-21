@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
+	awssvc "github.com/nicholasricci/caddy-dashboard/internal/aws"
 	"github.com/nicholasricci/caddy-dashboard/internal/models"
 	"gorm.io/gorm"
 )
@@ -43,6 +45,29 @@ func (f *fakeSnapshotWriter) Create(_ context.Context, s *models.CaddySnapshot) 
 	dup := *s
 	f.last = &dup
 	return nil
+}
+
+type fakeExecutor struct {
+	fetchResult awssvc.CommandResult
+	fetchErr    error
+	fetchCalls  int
+}
+
+func (f *fakeExecutor) ApplyConfig(_ context.Context, _, _ string, _ []byte) (*awssvc.CommandResult, error) {
+	return &awssvc.CommandResult{Status: "Success"}, nil
+}
+
+func (f *fakeExecutor) Reload(_ context.Context, _, _ string) (*awssvc.CommandResult, error) {
+	return &awssvc.CommandResult{Status: "Success"}, nil
+}
+
+func (f *fakeExecutor) FetchConfig(_ context.Context, _, _ string) (*awssvc.CommandResult, error) {
+	f.fetchCalls++
+	if f.fetchErr != nil {
+		return nil, f.fetchErr
+	}
+	result := f.fetchResult
+	return &result, nil
 }
 
 func TestService_GetLiveConfig_NodeNotFound(t *testing.T) {
@@ -180,5 +205,136 @@ func TestService_storeSnapshot_GroupScope(t *testing.T) {
 	}
 	if writer.last.DiscoveryConfigID == nil || *writer.last.DiscoveryConfigID != discoveryID {
 		t.Fatalf("DiscoveryConfigID=%v, want %s", writer.last.DiscoveryConfigID, discoveryID)
+	}
+}
+
+func TestService_ListConfigIDs_AndLookupByID(t *testing.T) {
+	instanceID := "i-123"
+	nodeID := uuid.New()
+	exec := &fakeExecutor{
+		fetchResult: awssvc.CommandResult{
+			Status: "Success",
+			Stdout: `{"apps":{"http":{"servers":{"srv0":{"routes":[{"@id":"route-main","handle":[{"handler":"reverse_proxy","upstreams":[{"dial":"10.0.0.1:8080"},{"dial":"10.0.0.2:8080"}]}],"match":[{"host":["main.example.com"]}]},{"@id":"route-no-upstreams","handle":[{"handler":"static_response"}]}]}}}}}`,
+		},
+	}
+	svc := NewService(
+		&fakeNodeLoader{node: &models.CaddyNode{ID: nodeID, Region: "eu-west-1", InstanceID: &instanceID}},
+		&fakeDiscoveryLoader{},
+		&fakeSnapshotWriter{},
+		exec,
+		WithCacheTTL(time.Minute),
+	)
+
+	ids, err := svc.ListConfigIDs(context.Background(), nodeID)
+	if err != nil {
+		t.Fatalf("ListConfigIDs: unexpected error: %v", err)
+	}
+	if len(ids) != 2 {
+		t.Fatalf("ListConfigIDs: got %d items, want 2", len(ids))
+	}
+	if ids[0].ID != "route-main" || !ids[0].HasUpstreams || ids[0].UpstreamCount != 2 || ids[0].HostCount != 1 {
+		t.Fatalf("route-main summary mismatch: %+v", ids[0])
+	}
+	if ids[1].ID != "route-no-upstreams" || ids[1].HasUpstreams || ids[1].UpstreamCount != 0 || ids[1].HostCount != 0 {
+		t.Fatalf("route-no-upstreams summary mismatch: %+v", ids[1])
+	}
+
+	fragment, err := svc.GetConfigByID(context.Background(), nodeID, "route-main")
+	if err != nil {
+		t.Fatalf("GetConfigByID: unexpected error: %v", err)
+	}
+	if len(fragment) == 0 {
+		t.Fatal("GetConfigByID: expected non-empty JSON fragment")
+	}
+
+	upstreams, err := svc.GetUpstreamsByID(context.Background(), nodeID, "route-main")
+	if err != nil {
+		t.Fatalf("GetUpstreamsByID: unexpected error: %v", err)
+	}
+	if len(upstreams) != 2 {
+		t.Fatalf("GetUpstreamsByID: got %d upstreams, want 2", len(upstreams))
+	}
+
+	_, err = svc.GetConfigByID(context.Background(), nodeID, "missing-id")
+	if !errors.Is(err, ErrConfigIDNotFound) {
+		t.Fatalf("GetConfigByID missing: got %v, want ErrConfigIDNotFound", err)
+	}
+}
+
+func TestService_GetLiveConfig_UsesCacheUntilInvalidated(t *testing.T) {
+	instanceID := "i-abc"
+	nodeID := uuid.New()
+	exec := &fakeExecutor{
+		fetchResult: awssvc.CommandResult{
+			Status: "Success",
+			Stdout: `{"apps":{"http":{"servers":{"srv0":{"routes":[{"@id":"first"}]}}}}}`,
+		},
+	}
+	svc := NewService(
+		&fakeNodeLoader{node: &models.CaddyNode{ID: nodeID, Region: "eu-west-1", InstanceID: &instanceID}},
+		&fakeDiscoveryLoader{},
+		&fakeSnapshotWriter{},
+		exec,
+		WithCacheTTL(time.Minute),
+	)
+
+	first, err := svc.GetLiveConfig(context.Background(), nodeID)
+	if err != nil {
+		t.Fatalf("GetLiveConfig first: unexpected error: %v", err)
+	}
+	second, err := svc.GetLiveConfig(context.Background(), nodeID)
+	if err != nil {
+		t.Fatalf("GetLiveConfig second: unexpected error: %v", err)
+	}
+	if exec.fetchCalls != 1 {
+		t.Fatalf("FetchConfig calls=%d, want 1 cache hit", exec.fetchCalls)
+	}
+	if string(first) != string(second) {
+		t.Fatalf("cache mismatch first=%s second=%s", string(first), string(second))
+	}
+
+	if err := svc.Reload(context.Background(), nodeID); err != nil {
+		t.Fatalf("Reload: unexpected error: %v", err)
+	}
+
+	exec.fetchResult.Stdout = `{"apps":{"http":{"servers":{"srv0":{"routes":[{"@id":"second"}]}}}}}`
+	third, err := svc.GetLiveConfig(context.Background(), nodeID)
+	if err != nil {
+		t.Fatalf("GetLiveConfig third: unexpected error: %v", err)
+	}
+	if exec.fetchCalls != 2 {
+		t.Fatalf("FetchConfig calls=%d, want 2 after invalidation", exec.fetchCalls)
+	}
+	if string(third) == string(first) {
+		t.Fatalf("expected refreshed config after reload invalidation")
+	}
+}
+
+func TestService_GetHostsByID(t *testing.T) {
+	instanceID := "i-hosts"
+	nodeID := uuid.New()
+	exec := &fakeExecutor{
+		fetchResult: awssvc.CommandResult{
+			Status: "Success",
+			Stdout: `{"apps":{"http":{"servers":{"srv0":{"routes":[{"@id":"route-hosts","handle":[{"handler":"reverse_proxy","upstreams":[{"dial":"172.31.10.245:5555"}]}],"match":[{"host":["flower.gruppogaspari.it","alt.gruppogaspari.it","flower.gruppogaspari.it"]}],"terminal":true}]}}}}}`,
+		},
+	}
+	svc := NewService(
+		&fakeNodeLoader{node: &models.CaddyNode{ID: nodeID, Region: "eu-west-1", InstanceID: &instanceID}},
+		&fakeDiscoveryLoader{},
+		&fakeSnapshotWriter{},
+		exec,
+		WithCacheTTL(time.Minute),
+	)
+
+	hosts, err := svc.GetHostsByID(context.Background(), nodeID, "route-hosts")
+	if err != nil {
+		t.Fatalf("GetHostsByID: unexpected error: %v", err)
+	}
+	if len(hosts) != 2 {
+		t.Fatalf("GetHostsByID: got %d hosts, want 2 (%v)", len(hosts), hosts)
+	}
+	if hosts[0] != "alt.gruppogaspari.it" || hosts[1] != "flower.gruppogaspari.it" {
+		t.Fatalf("GetHostsByID: unexpected hosts order/content: %v", hosts)
 	}
 }

@@ -1,9 +1,11 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -13,11 +15,23 @@ import (
 )
 
 type CaddyHandler struct {
-	svc   *services.CaddyService
+	svc   caddyService
 	audit *services.AuditService
 }
 
-func NewCaddyHandler(svc *services.CaddyService, audit *services.AuditService) *CaddyHandler {
+type caddyService interface {
+	Sync(ctx context.Context, nodeID uuid.UUID, requestedBy string) error
+	GetLiveConfig(ctx context.Context, nodeID uuid.UUID) (json.RawMessage, error)
+	ListConfigIDs(ctx context.Context, nodeID uuid.UUID) ([]models.CaddyConfigIDInfo, error)
+	GetConfigByID(ctx context.Context, nodeID uuid.UUID, configID string) (json.RawMessage, error)
+	GetUpstreamsByID(ctx context.Context, nodeID uuid.UUID, configID string) ([]json.RawMessage, error)
+	GetHostsByID(ctx context.Context, nodeID uuid.UUID, configID string) ([]string, error)
+	Apply(ctx context.Context, nodeID uuid.UUID, payload json.RawMessage, requestedBy string) error
+	Reload(ctx context.Context, nodeID uuid.UUID) error
+	ListSnapshotsPaginated(ctx context.Context, nodeID uuid.UUID, limit, offset int) ([]models.CaddySnapshot, int64, error)
+}
+
+func NewCaddyHandler(svc caddyService, audit *services.AuditService) *CaddyHandler {
 	return &CaddyHandler{svc: svc, audit: audit}
 }
 
@@ -98,6 +112,174 @@ func (h *CaddyHandler) LiveConfig(c *gin.Context) {
 		return
 	}
 	c.Data(http.StatusOK, "application/json", raw)
+}
+
+// ListConfigIDs godoc
+// @Summary List @id entries from live Caddy config
+// @Description Fetches live Caddy config and returns all discovered @id entries, including upstream metadata when present
+// @Tags caddy
+// @Produce json
+// @Param id path string true "Node ID"
+// @Success 200 {object} models.CaddyConfigIDsResponse
+// @Failure 400 {object} models.ErrorResponse
+// @Failure 404 {object} models.ErrorResponse
+// @Failure 500 {object} models.ErrorResponse
+// @Security BearerAuth
+// @Router /api/v1/nodes/{id}/config/live/ids [get]
+func (h *CaddyHandler) ListConfigIDs(c *gin.Context) {
+	nodeID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "invalid node id"})
+		return
+	}
+	items, err := h.svc.ListConfigIDs(c.Request.Context(), nodeID)
+	if err != nil {
+		if respondCaddyNodeError(c, err) {
+			return
+		}
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "failed to list config ids"})
+		return
+	}
+	c.JSON(http.StatusOK, models.CaddyConfigIDsResponse{Items: items})
+}
+
+// ConfigByID godoc
+// @Summary Get config fragment by @id
+// @Description Fetches live Caddy config and returns the JSON fragment matching the requested @id
+// @Tags caddy
+// @Produce json
+// @Param id path string true "Node ID"
+// @Param configId path string true "@id value"
+// @Success 200 {object} object "Config fragment JSON"
+// @Failure 400 {object} models.ErrorResponse
+// @Failure 404 {object} models.ErrorResponse
+// @Failure 500 {object} models.ErrorResponse
+// @Security BearerAuth
+// @Router /api/v1/nodes/{id}/config/live/ids/{configId} [get]
+func (h *CaddyHandler) ConfigByID(c *gin.Context) {
+	nodeID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "invalid node id"})
+		return
+	}
+	configID := strings.TrimSpace(c.Param("configId"))
+	if configID == "" {
+		c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "invalid config id"})
+		return
+	}
+	raw, err := h.svc.GetConfigByID(c.Request.Context(), nodeID, configID)
+	if err != nil {
+		if respondCaddyNodeError(c, err) {
+			return
+		}
+		if errors.Is(err, caddysvc.ErrConfigIDNotFound) {
+			c.JSON(http.StatusNotFound, models.ErrorResponse{Error: "config id not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "failed to fetch config fragment"})
+		return
+	}
+	c.Data(http.StatusOK, "application/json", raw)
+}
+
+// UpstreamsByID godoc
+// @Summary Get upstreams by @id
+// @Description Fetches live Caddy config and returns upstreams associated with the requested @id
+// @Tags caddy
+// @Produce json
+// @Param id path string true "Node ID"
+// @Param configId path string true "@id value"
+// @Success 200 {object} models.CaddyConfigUpstreamsResponse
+// @Failure 400 {object} models.ErrorResponse
+// @Failure 404 {object} models.ErrorResponse
+// @Failure 500 {object} models.ErrorResponse
+// @Security BearerAuth
+// @Router /api/v1/nodes/{id}/config/live/ids/{configId}/upstreams [get]
+func (h *CaddyHandler) UpstreamsByID(c *gin.Context) {
+	nodeID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "invalid node id"})
+		return
+	}
+	configID := strings.TrimSpace(c.Param("configId"))
+	if configID == "" {
+		c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "invalid config id"})
+		return
+	}
+	upstreams, err := h.svc.GetUpstreamsByID(c.Request.Context(), nodeID, configID)
+	if err != nil {
+		if respondCaddyNodeError(c, err) {
+			return
+		}
+		if errors.Is(err, caddysvc.ErrConfigIDNotFound) {
+			c.JSON(http.StatusNotFound, models.ErrorResponse{Error: "config id not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "failed to fetch config upstreams"})
+		return
+	}
+	c.JSON(http.StatusOK, models.CaddyConfigUpstreamsResponse{
+		ID:            configID,
+		HasUpstreams:  len(upstreams) > 0,
+		UpstreamCount: len(upstreams),
+		Upstreams:     rawMessagesToAny(upstreams),
+	})
+}
+
+// HostsByID godoc
+// @Summary Get hosts by @id
+// @Description Fetches live Caddy config and returns unique hosts extracted from upstreams associated with the requested @id
+// @Tags caddy
+// @Produce json
+// @Param id path string true "Node ID"
+// @Param configId path string true "@id value"
+// @Success 200 {object} models.CaddyConfigHostsResponse
+// @Failure 400 {object} models.ErrorResponse
+// @Failure 404 {object} models.ErrorResponse
+// @Failure 500 {object} models.ErrorResponse
+// @Security BearerAuth
+// @Router /api/v1/nodes/{id}/config/live/ids/{configId}/hosts [get]
+func (h *CaddyHandler) HostsByID(c *gin.Context) {
+	nodeID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "invalid node id"})
+		return
+	}
+	configID := strings.TrimSpace(c.Param("configId"))
+	if configID == "" {
+		c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "invalid config id"})
+		return
+	}
+	hosts, err := h.svc.GetHostsByID(c.Request.Context(), nodeID, configID)
+	if err != nil {
+		if respondCaddyNodeError(c, err) {
+			return
+		}
+		if errors.Is(err, caddysvc.ErrConfigIDNotFound) {
+			c.JSON(http.StatusNotFound, models.ErrorResponse{Error: "config id not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "failed to fetch config hosts"})
+		return
+	}
+	c.JSON(http.StatusOK, models.CaddyConfigHostsResponse{
+		ID:        configID,
+		HostCount: len(hosts),
+		Hosts:     hosts,
+	})
+}
+
+func rawMessagesToAny(values []json.RawMessage) []any {
+	out := make([]any, 0, len(values))
+	for _, raw := range values {
+		var decoded any
+		if err := json.Unmarshal(raw, &decoded); err == nil {
+			out = append(out, decoded)
+			continue
+		}
+		out = append(out, string(raw))
+	}
+	return out
 }
 
 // Apply godoc

@@ -1,6 +1,6 @@
 # Caddy Dashboard MCP (development only)
 
-Local MCP server for Cursor: read the Swagger spec and run **safe** HTTP calls against the Go API (`GET /api/v1/*` and `POST` only on `/api/v1/auth/login`, `/api/v1/auth/refresh`, `/api/v1/auth/logout`, `/api/v1/snapshots/backfill`). It does not start unless `CADDY_MCP_DEV=1`.
+Local MCP server for Cursor: read the Swagger spec and run **safe** HTTP calls against the Go API (`GET /api/v1/*` and `POST` only on `/api/v1/auth/login`, `/api/v1/auth/refresh`, `/api/v1/auth/logout`, `/api/v1/snapshots/backfill`). This includes read-only Caddy live-inspection endpoints such as `/api/v1/nodes/{id}/config/live/ids`. It does not start unless `CADDY_MCP_DEV=1`.
 
 ## Build
 
@@ -48,7 +48,7 @@ Do **not** commit real tokens. Prefer user-level MCP settings or a local file ig
 |------|---------|
 | `get_openapi` | Full Swagger JSON from live `/swagger/doc.json` or `docs/swagger.json`. |
 | `list_api_operations` | Compact list of operations; optional filter string. |
-| `api_request` | Safe `GET`/`POST` as described above; blocks apply/reload/sync/discovery run paths. Supports pagination query params like `?limit=20&offset=0`, including discovery snapshot reads such as `/api/v1/discovery/{id}/snapshots`. Also supports admin write backfill `POST /api/v1/snapshots/backfill` (rate-limited, admin-only). |
+| `api_request` | Safe `GET`/`POST` as described above; blocks apply/reload/sync/discovery run paths. Supports pagination query params like `?limit=20&offset=0`, including discovery snapshot reads such as `/api/v1/discovery/{id}/snapshots` and Caddy live config ID/upstream reads under `/api/v1/nodes/{id}/config/live/ids`. Also supports admin write backfill `POST /api/v1/snapshots/backfill` (rate-limited, admin-only). |
 
 When you refresh the OpenAPI spec after backend changes, `snapshot_scope` on discovery payloads and discovery-group snapshot routes are available through `get_openapi` and `list_api_operations`.
 

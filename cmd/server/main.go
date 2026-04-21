@@ -89,7 +89,14 @@ func main() {
 	ec2Svc := awssvc.NewEC2Service(awsClients)
 	ssmSvc := awssvc.NewSSMService(awsClients)
 	executor := caddysvc.NewSSMExecutor(ssmSvc)
-	internalCaddySvc := caddysvc.NewService(nodeRepo, discoveryRepo, snapshotRepo, executor)
+	internalCaddySvc := caddysvc.NewService(
+		nodeRepo,
+		discoveryRepo,
+		snapshotRepo,
+		executor,
+		caddysvc.WithCache(caddysvc.NewInMemoryConfigCacheStore()),
+		caddysvc.WithCacheTTL(cfg.Caddy.CacheTTL),
+	)
 
 	nodeSvc := services.NewNodeService(nodeRepo)
 	discoverySvc := services.NewDiscoveryService(discoveryRepo, nodeRepo, ec2Svc, ssmSvc)

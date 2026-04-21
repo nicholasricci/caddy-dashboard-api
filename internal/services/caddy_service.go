@@ -39,6 +39,22 @@ func (s *CaddyService) GetLiveConfig(ctx context.Context, nodeID uuid.UUID) (jso
 	return s.caddySvc.GetLiveConfig(ctx, nodeID)
 }
 
+func (s *CaddyService) ListConfigIDs(ctx context.Context, nodeID uuid.UUID) ([]models.CaddyConfigIDInfo, error) {
+	return s.caddySvc.ListConfigIDs(ctx, nodeID)
+}
+
+func (s *CaddyService) GetConfigByID(ctx context.Context, nodeID uuid.UUID, configID string) (json.RawMessage, error) {
+	return s.caddySvc.GetConfigByID(ctx, nodeID, configID)
+}
+
+func (s *CaddyService) GetUpstreamsByID(ctx context.Context, nodeID uuid.UUID, configID string) ([]json.RawMessage, error) {
+	return s.caddySvc.GetUpstreamsByID(ctx, nodeID, configID)
+}
+
+func (s *CaddyService) GetHostsByID(ctx context.Context, nodeID uuid.UUID, configID string) ([]string, error) {
+	return s.caddySvc.GetHostsByID(ctx, nodeID, configID)
+}
+
 func (s *CaddyService) Apply(ctx context.Context, nodeID uuid.UUID, payload json.RawMessage, requestedBy string) error {
 	return s.caddySvc.ApplyConfig(ctx, nodeID, payload, requestedBy)
 }

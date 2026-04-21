@@ -15,6 +15,7 @@ type Config struct {
 	Server        ServerConfig        `mapstructure:"server"`
 	Auth          AuthConfig          `mapstructure:"auth"`
 	AWS           AWSConfig           `mapstructure:"aws"`
+	Caddy         CaddyConfig         `mapstructure:"caddy"`
 	Database      DatabaseConfig      `mapstructure:"database"`
 	Discovery     DiscoveryConfig     `mapstructure:"discovery"`
 	Observability ObservabilityConfig `mapstructure:"observability"`
@@ -47,6 +48,10 @@ type AuthConfig struct {
 type AWSConfig struct {
 	Profile string   `mapstructure:"profile"`
 	Regions []string `mapstructure:"regions"`
+}
+
+type CaddyConfig struct {
+	CacheTTL time.Duration `mapstructure:"cache_ttl"`
 }
 
 type DatabaseConfig struct {
@@ -119,6 +124,10 @@ func Load() (*Config, error) {
 	v.SetDefault("aws.regions", []string{"eu-south-1", "eu-central-1"})
 	v.BindEnv("aws.profile", "AWS_PROFILE")
 	v.BindEnv("aws.regions", "AWS_REGIONS")
+
+	// Caddy
+	v.SetDefault("caddy.cache_ttl", "2m")
+	_ = v.BindEnv("caddy.cache_ttl", "CADDY_CACHE_TTL")
 
 	// DB
 	v.BindEnv("database.host", "DB_HOST")

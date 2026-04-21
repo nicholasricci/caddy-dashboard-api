@@ -898,6 +898,235 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v1/nodes/{id}/config/live/ids": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Fetches live Caddy config and returns all discovered @id entries, including upstream metadata when present",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "caddy"
+                ],
+                "summary": "List @id entries from live Caddy config",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Node ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.CaddyConfigIDsResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/nodes/{id}/config/live/ids/{configId}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Fetches live Caddy config and returns the JSON fragment matching the requested @id",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "caddy"
+                ],
+                "summary": "Get config fragment by @id",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Node ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "@id value",
+                        "name": "configId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Config fragment JSON",
+                        "schema": {
+                            "type": "object"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/nodes/{id}/config/live/ids/{configId}/hosts": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Fetches live Caddy config and returns unique hosts extracted from upstreams associated with the requested @id",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "caddy"
+                ],
+                "summary": "Get hosts by @id",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Node ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "@id value",
+                        "name": "configId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.CaddyConfigHostsResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/nodes/{id}/config/live/ids/{configId}/upstreams": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Fetches live Caddy config and returns upstreams associated with the requested @id",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "caddy"
+                ],
+                "summary": "Get upstreams by @id",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Node ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "@id value",
+                        "name": "configId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.CaddyConfigUpstreamsResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/nodes/{id}/reload": {
             "post": {
                 "security": [
@@ -1428,6 +1657,73 @@ const docTemplate = `{
                 "rows_updated": {
                     "type": "integer",
                     "example": 42
+                }
+            }
+        },
+        "models.CaddyConfigHostsResponse": {
+            "type": "object",
+            "properties": {
+                "host_count": {
+                    "type": "integer"
+                },
+                "hosts": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "id": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.CaddyConfigIDInfo": {
+            "type": "object",
+            "properties": {
+                "has_upstreams": {
+                    "type": "boolean"
+                },
+                "host_count": {
+                    "type": "integer"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "upstream_count": {
+                    "type": "integer"
+                },
+                "upstreams": {
+                    "type": "array",
+                    "items": {}
+                }
+            }
+        },
+        "models.CaddyConfigIDsResponse": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.CaddyConfigIDInfo"
+                    }
+                }
+            }
+        },
+        "models.CaddyConfigUpstreamsResponse": {
+            "type": "object",
+            "properties": {
+                "has_upstreams": {
+                    "type": "boolean"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "upstream_count": {
+                    "type": "integer"
+                },
+                "upstreams": {
+                    "type": "array",
+                    "items": {}
                 }
             }
         },

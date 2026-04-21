@@ -44,8 +44,8 @@ tools/mcp-server/    # Server MCP Node/TS per Cursor (dev only)
 
 ## Configurazione
 
-- File principale: [`configs/config.yaml`](configs/config.yaml) (porta, `gin_mode`, CORS, TTL JWT, regioni AWS, DSN DB, log level).
-- Variabili d’ambiente: vedi [`.env.example`](.env.example). Rilevanti: `SERVER_PORT` (binding), `DB_*`, `AWS_PROFILE`, `AWS_REGIONS` (lista separata da virgola), `JWT_SECRET` (**obbligatorio**), `LOG_LEVEL`, `GIN_MODE`.
+- File principale: [`configs/config.yaml`](configs/config.yaml) (porta, `gin_mode`, CORS, TTL JWT, regioni AWS, cache Caddy, DSN DB, log level).
+- Variabili d’ambiente: vedi [`.env.example`](.env.example). Rilevanti: `SERVER_PORT` (binding), `DB_*`, `AWS_PROFILE`, `AWS_REGIONS` (lista separata da virgola), `JWT_SECRET` (**obbligatorio**), `CADDY_CACHE_TTL`, `LOG_LEVEL`, `GIN_MODE`.
 - Viper usa prefisso `APP_` con sostituzione `.` → `_` per override (es. variabili annidate).
 - CORS: con `cors_allowed_origins` vuoto si usa `*` senza credentials; per una SPA su altra origine impostare esplicitamente (es. `http://localhost:4200`) in YAML.
 
@@ -66,6 +66,7 @@ Endpoint principali (dettaglio in [`internal/api/routes/routes.go`](internal/api
 - Protetti: CRUD/list nodi e discovery in lettura.
 - Protetti: `POST /api/v1/auth/logout`.
 - Solo admin: creazione/aggiornamento/cancellazione nodi e discovery; `POST .../sync`, `/apply`, `/reload`; `GET /nodes/:id/snapshots`; `GET /discovery/:id/snapshots`; `POST /discovery/:id/run`; gestione utenti; `GET /audit`.
+- Solo admin: introspezione config Caddy live con `GET /nodes/:id/config/live/ids`, `GET /nodes/:id/config/live/ids/:configId`, `GET /nodes/:id/config/live/ids/:configId/upstreams`.
 - Solo admin: endpoint operativo `POST /api/v1/snapshots/backfill` per rilanciare on-demand il backfill `discovery_config_id` sugli snapshot legacy (idempotente, rate-limited).
 
 ## Dominio funzionale
@@ -75,7 +76,7 @@ Endpoint principali (dettaglio in [`internal/api/routes/routes.go`](internal/api
 - **Snapshot**: versioni di configurazione Caddy persistite dopo sync/apply, con scope configurabile per `DiscoveryConfig` (`node` o `group`).
 - **Utenti**: username, ruolo, password hash; JWT emessi al login.
 
-Operazioni Caddy lato macchina remota avvengono tramite **SSM** (non SSH diretto dall’API).
+Operazioni Caddy lato macchina remota avvengono tramite **SSM** (non SSH diretto dall’API). Le letture live e i metadati derivati (`@id`, upstream) sono cache-ati in memoria per nodo con TTL configurabile (`caddy.cache_ttl` / `CADDY_CACHE_TTL`) e invalidazione su mutazioni (`apply`, `sync`, `reload`).
 
 ## Comandi utili
 

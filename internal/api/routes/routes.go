@@ -67,6 +67,10 @@ func NewRouter(dep Dependencies) *gin.Engine {
 	admin.DELETE("/nodes/:id", dep.NodeHandler.Delete)
 
 	admin.GET("/nodes/:id/config/live", dep.CaddyHandler.LiveConfig)
+	admin.GET("/nodes/:id/config/live/ids", dep.CaddyHandler.ListConfigIDs)
+	admin.GET("/nodes/:id/config/live/ids/:configId", dep.CaddyHandler.ConfigByID)
+	admin.GET("/nodes/:id/config/live/ids/:configId/upstreams", dep.CaddyHandler.UpstreamsByID)
+	admin.GET("/nodes/:id/config/live/ids/:configId/hosts", dep.CaddyHandler.HostsByID)
 	admin.POST("/nodes/:id/sync", dep.CaddyHandler.Sync)
 	admin.POST("/nodes/:id/apply", middleware.MaxBodyBytes(dep.MaxApplyBodyBytes), middleware.RateLimitByIP(applyLimiter), dep.CaddyHandler.Apply)
 	admin.POST("/nodes/:id/reload", dep.CaddyHandler.Reload)

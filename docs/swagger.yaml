@@ -61,6 +61,50 @@ definitions:
         example: 42
         type: integer
     type: object
+  models.CaddyConfigHostsResponse:
+    properties:
+      host_count:
+        type: integer
+      hosts:
+        items:
+          type: string
+        type: array
+      id:
+        type: string
+    type: object
+  models.CaddyConfigIDInfo:
+    properties:
+      has_upstreams:
+        type: boolean
+      host_count:
+        type: integer
+      id:
+        type: string
+      upstream_count:
+        type: integer
+      upstreams:
+        items: {}
+        type: array
+    type: object
+  models.CaddyConfigIDsResponse:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/models.CaddyConfigIDInfo'
+        type: array
+    type: object
+  models.CaddyConfigUpstreamsResponse:
+    properties:
+      has_upstreams:
+        type: boolean
+      id:
+        type: string
+      upstream_count:
+        type: integer
+      upstreams:
+        items: {}
+        type: array
+    type: object
   models.CaddyNode:
     properties:
       created_at:
@@ -709,6 +753,157 @@ paths:
       security:
       - BearerAuth: []
       summary: Get live Caddy config
+      tags:
+      - caddy
+  /api/v1/nodes/{id}/config/live/ids:
+    get:
+      description: Fetches live Caddy config and returns all discovered @id entries,
+        including upstream metadata when present
+      parameters:
+      - description: Node ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.CaddyConfigIDsResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List @id entries from live Caddy config
+      tags:
+      - caddy
+  /api/v1/nodes/{id}/config/live/ids/{configId}:
+    get:
+      description: Fetches live Caddy config and returns the JSON fragment matching
+        the requested @id
+      parameters:
+      - description: Node ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: '@id value'
+        in: path
+        name: configId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Config fragment JSON
+          schema:
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get config fragment by @id
+      tags:
+      - caddy
+  /api/v1/nodes/{id}/config/live/ids/{configId}/hosts:
+    get:
+      description: Fetches live Caddy config and returns unique hosts extracted from
+        upstreams associated with the requested @id
+      parameters:
+      - description: Node ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: '@id value'
+        in: path
+        name: configId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.CaddyConfigHostsResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get hosts by @id
+      tags:
+      - caddy
+  /api/v1/nodes/{id}/config/live/ids/{configId}/upstreams:
+    get:
+      description: Fetches live Caddy config and returns upstreams associated with
+        the requested @id
+      parameters:
+      - description: Node ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: '@id value'
+        in: path
+        name: configId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.CaddyConfigUpstreamsResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get upstreams by @id
       tags:
       - caddy
   /api/v1/nodes/{id}/reload:

@@ -26,6 +26,9 @@ aws:
     - eu-south-1
     - eu-central-1
 
+caddy:
+  cache_ttl: 2m
+
 database:
   host: ""
   port: 3306
