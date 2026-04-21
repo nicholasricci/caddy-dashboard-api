@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 
-FROM golang:1.24-bookworm
+FROM golang:1.26-bookworm
 WORKDIR /app
 
 RUN apt-get update \

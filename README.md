@@ -15,7 +15,7 @@ Backend API in Go (Gin) to manage Caddy nodes across AWS regions with:
 
 ## Prerequisites
 
-- Go 1.24+
+- Go 1.26+
 - Docker and Docker Compose (optional but recommended for local DB)
 - AWS credentials (profile or IAM role) with required EC2/SSM permissions
 - MariaDB/MySQL instance

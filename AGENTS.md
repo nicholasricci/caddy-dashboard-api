@@ -6,7 +6,7 @@ Documento di contesto per assistenti AI che lavorano su questo repository.
 
 **Caddy Dashboard** è un backend API in **Go** (framework **Gin**) per gestire nodi **Caddy** su **AWS**: registrazione manuale o discovery via EC2, operazioni su Caddy tramite **AWS Systems Manager (SSM) Run Command**, persistenza di nodi, regole di discovery, snapshot di configurazione e utenti in **MariaDB/MySQL** (driver GORM `mysql`), autenticazione **JWT** con ruoli `admin` e `user`.
 
-Modulo Go: `github.com/nicholasricci/caddy-dashboard` · Go **1.24**.
+Modulo Go: `github.com/nicholasricci/caddy-dashboard` · Go **1.26**.
 
 ## Stack tecnico
 
