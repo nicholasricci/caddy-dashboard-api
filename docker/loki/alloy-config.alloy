@@ -1,0 +1,61 @@
+// Docker log discovery
+discovery.docker "containers" {
+  host = "unix:///var/run/docker.sock"
+}
+
+// Keep only the API container logs
+discovery.relabel "api" {
+  targets = discovery.docker.containers.targets
+
+  rule {
+    source_labels = ["__meta_docker_container_name"]
+    regex         = ".+_api_.*"
+    action        = "keep"
+  }
+
+  rule {
+    source_labels = ["__meta_docker_container_name"]
+    target_label  = "container"
+    action        = "replace"
+  }
+
+  rule {
+    source_labels = ["__meta_docker_container_id"]
+    target_label  = "container_id"
+    action        = "replace"
+  }
+}
+
+loki.source.docker "api" {
+  host       = "unix:///var/run/docker.sock"
+  targets    = discovery.relabel.api.output
+  labels     = {service = "caddy-dashboard-api"}
+  forward_to = [loki.process.api.receiver]
+}
+
+loki.process "api" {
+  forward_to = [loki.write.grafana_cloud.receiver]
+
+  stage.static_labels {
+    values = {
+      environment    = env("LOKI_ENVIRONMENT"),
+      compose_project = env("COMPOSE_PROJECT_NAME"),
+    }
+  }
+}
+
+loki.write "grafana_cloud" {
+  endpoint {
+    url       = env("LOKI_URL")
+    tenant_id = env("LOKI_TENANT_ID")
+
+    basic_auth {
+      username = env("LOKI_USER")
+      password = env("LOKI_API_KEY")
+    }
+  }
+
+  external_labels = {
+    source = "docker-compose",
+  }
+}

@@ -32,10 +32,10 @@ type Dependencies struct {
 
 func NewRouter(dep Dependencies) *gin.Engine {
 	r := gin.New()
-	r.Use(gin.Recovery())
+	r.Use(middleware.RequestID())
+	r.Use(middleware.Recovery(dep.Logger))
 	r.Use(middleware.CORSMiddleware(dep.CORSAllowedOrigins))
 	r.Use(middleware.MaxBodyBytes(dep.MaxBodyBytes))
-	r.Use(middleware.RequestID())
 	r.Use(middleware.RequestLogger(dep.Logger))
 	if dep.EnableSwagger {
 		r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerfiles.Handler))

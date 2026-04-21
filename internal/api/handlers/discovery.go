@@ -10,12 +10,14 @@ import (
 	"github.com/google/uuid"
 	"github.com/nicholasricci/caddy-dashboard/internal/models"
 	"github.com/nicholasricci/caddy-dashboard/internal/services"
+	"go.uber.org/zap"
 )
 
 type DiscoveryHandler struct {
 	svc      *services.DiscoveryService
 	caddySvc *services.CaddyService
 	audit    *services.AuditService
+	logger   *zap.Logger
 }
 
 type discoveryWriteRequest struct {
@@ -29,8 +31,8 @@ type discoveryWriteRequest struct {
 	Enabled       *bool           `json:"enabled"`
 }
 
-func NewDiscoveryHandler(svc *services.DiscoveryService, caddySvc *services.CaddyService, audit *services.AuditService) *DiscoveryHandler {
-	return &DiscoveryHandler{svc: svc, caddySvc: caddySvc, audit: audit}
+func NewDiscoveryHandler(svc *services.DiscoveryService, caddySvc *services.CaddyService, audit *services.AuditService, logger *zap.Logger) *DiscoveryHandler {
+	return &DiscoveryHandler{svc: svc, caddySvc: caddySvc, audit: audit, logger: nopLogger(logger)}
 }
 
 // List godoc
@@ -46,6 +48,7 @@ func (h *DiscoveryHandler) List(c *gin.Context) {
 	limit, offset := parseLimitOffset(c)
 	items, total, err := h.svc.ListPaginated(c.Request.Context(), limit, offset)
 	if err != nil {
+		logRequestError(h.logger, c, "list discovery configs failed", err)
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "failed to list discovery configs"})
 		return
 	}
@@ -73,6 +76,7 @@ func (h *DiscoveryHandler) Get(c *gin.Context) {
 			c.JSON(http.StatusNotFound, models.ErrorResponse{Error: "discovery config not found"})
 			return
 		}
+		logRequestError(h.logger, c, "load discovery config failed", err, zap.String("discovery_id", id.String()))
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "failed to load discovery config"})
 		return
 	}
@@ -121,10 +125,15 @@ func (h *DiscoveryHandler) Create(c *gin.Context) {
 			c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "snapshot_scope must be one of: node, group"})
 			return
 		}
+		logRequestError(h.logger, c, "create discovery config failed", err,
+			zap.String("name", cfg.Name),
+			zap.String("region", cfg.Region),
+			zap.String("method", cfg.Method),
+		)
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "failed to create discovery config"})
 		return
 	}
-	_ = h.audit.Record(c.Request.Context(), c.GetString("username"), "create", "discovery", cfg.ID.String(), cfg)
+	logAuditFailure(h.logger, c, "create", "discovery", cfg.ID.String(), h.audit.Record(c.Request.Context(), c.GetString("username"), "create", "discovery", cfg.ID.String(), cfg))
 	c.JSON(http.StatusCreated, cfg)
 }
 
@@ -180,10 +189,15 @@ func (h *DiscoveryHandler) Update(c *gin.Context) {
 			c.JSON(http.StatusNotFound, models.ErrorResponse{Error: "discovery config not found"})
 			return
 		}
+		logRequestError(h.logger, c, "update discovery config failed", err,
+			zap.String("discovery_id", id.String()),
+			zap.String("region", cfg.Region),
+			zap.String("method", cfg.Method),
+		)
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "failed to update discovery config"})
 		return
 	}
-	_ = h.audit.Record(c.Request.Context(), c.GetString("username"), "update", "discovery", cfg.ID.String(), cfg)
+	logAuditFailure(h.logger, c, "update", "discovery", cfg.ID.String(), h.audit.Record(c.Request.Context(), c.GetString("username"), "update", "discovery", cfg.ID.String(), cfg))
 	c.JSON(http.StatusOK, cfg)
 }
 
@@ -206,10 +220,11 @@ func (h *DiscoveryHandler) Delete(c *gin.Context) {
 			c.JSON(http.StatusNotFound, models.ErrorResponse{Error: "discovery config not found"})
 			return
 		}
+		logRequestError(h.logger, c, "delete discovery config failed", err, zap.String("discovery_id", id.String()))
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "failed to delete discovery config"})
 		return
 	}
-	_ = h.audit.Record(c.Request.Context(), c.GetString("username"), "delete", "discovery", id.String(), nil)
+	logAuditFailure(h.logger, c, "delete", "discovery", id.String(), h.audit.Record(c.Request.Context(), c.GetString("username"), "delete", "discovery", id.String(), nil))
 	c.Status(http.StatusNoContent)
 }
 
@@ -246,10 +261,11 @@ func (h *DiscoveryHandler) Run(c *gin.Context) {
 			c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "unknown discovery method"})
 			return
 		}
+		logRequestError(h.logger, c, "discovery run failed", err, zap.String("discovery_id", id.String()))
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "discovery run failed"})
 		return
 	}
-	_ = h.audit.Record(c.Request.Context(), c.GetString("username"), "run", "discovery", id.String(), gin.H{"discovered_nodes": count})
+	logAuditFailure(h.logger, c, "run", "discovery", id.String(), h.audit.Record(c.Request.Context(), c.GetString("username"), "run", "discovery", id.String(), gin.H{"discovered_nodes": count}))
 	c.JSON(http.StatusOK, gin.H{"discovered_nodes": count})
 }
 
@@ -275,12 +291,14 @@ func (h *DiscoveryHandler) ListSnapshots(c *gin.Context) {
 			c.JSON(http.StatusNotFound, models.ErrorResponse{Error: "discovery config not found"})
 			return
 		}
+		logRequestError(h.logger, c, "load discovery config for snapshots failed", err, zap.String("discovery_id", id.String()))
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "failed to load discovery config"})
 		return
 	}
 	limit, offset := parseLimitOffset(c)
 	snapshots, total, err := h.caddySvc.ListDiscoverySnapshotsPaginated(c.Request.Context(), id, limit, offset)
 	if err != nil {
+		logRequestError(h.logger, c, "list discovery snapshots failed", err, zap.String("discovery_id", id.String()))
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "failed to list snapshots"})
 		return
 	}

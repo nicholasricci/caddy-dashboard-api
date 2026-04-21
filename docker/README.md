@@ -20,6 +20,40 @@ docker compose up --build
 
 Con il container `api` avviato, ogni modifica ai file Go nel workspace viene ricompilata e riavviata automaticamente da `air`.
 
+## Opzione Loki (Grafana Cloud) con Alloy
+
+Il servizio `alloy` in `docker-compose.yml` e' opzionale (profile `loki`) e spedisce i log JSON del container `api` verso Loki/Grafana Cloud.
+
+1. Imposta in `.env`:
+
+```bash
+LOKI_URL=https://<loki-endpoint>/loki/api/v1/push
+LOKI_USER=<grafana-cloud-user-id>
+LOKI_API_KEY=<grafana-cloud-token-con-scope-logs:write>
+LOKI_TENANT_ID=<tenant-id-opzionale>
+LOKI_ENVIRONMENT=local
+```
+
+2. Avvia stack + collector:
+
+```bash
+docker compose --profile loki up --build
+```
+
+3. Verifica collector:
+
+```bash
+curl -sS http://localhost:${ALLOY_UI_PORT:-12345}/-/ready
+```
+
+4. Genera log API e verifica in Grafana Explore (data source Loki) con query:
+
+```logql
+{service="caddy-dashboard-api",environment="local"}
+```
+
+Nota: senza profile `loki` (o senza credenziali Loki) l'app continua a loggare solo su stdout come prima.
+
 ## Health check HTTP
 
 Endpoint: `GET /api/v1/health`

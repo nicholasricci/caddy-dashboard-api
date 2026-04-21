@@ -7,14 +7,16 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/nicholasricci/caddy-dashboard/internal/auth"
 	"github.com/nicholasricci/caddy-dashboard/internal/models"
+	"go.uber.org/zap"
 )
 
 type AuthHandler struct {
 	authSvc *auth.Service
+	logger  *zap.Logger
 }
 
-func NewAuthHandler(authSvc *auth.Service) *AuthHandler {
-	return &AuthHandler{authSvc: authSvc}
+func NewAuthHandler(authSvc *auth.Service, logger *zap.Logger) *AuthHandler {
+	return &AuthHandler{authSvc: authSvc, logger: nopLogger(logger)}
 }
 
 type loginRequest struct {
@@ -54,6 +56,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 			c.JSON(http.StatusUnauthorized, models.ErrorResponse{Error: "invalid credentials"})
 			return
 		}
+		logRequestError(h.logger, c, "login failed", err, zap.String("login_username", req.Username))
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "login failed"})
 		return
 	}
@@ -88,6 +91,7 @@ func (h *AuthHandler) Refresh(c *gin.Context) {
 			c.JSON(http.StatusUnauthorized, models.ErrorResponse{Error: "invalid refresh token"})
 			return
 		}
+		logRequestError(h.logger, c, "refresh failed", err)
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "refresh failed"})
 		return
 	}
@@ -117,6 +121,7 @@ func (h *AuthHandler) Logout(c *gin.Context) {
 		return
 	}
 	if err := h.authSvc.Logout(c.Request.Context(), req.RefreshToken); err != nil {
+		logRequestError(h.logger, c, "logout failed", err)
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "logout failed"})
 		return
 	}

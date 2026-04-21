@@ -21,7 +21,7 @@ func NewAdminHandler(snapshots *repository.SnapshotRepository, audit *services.A
 	return &AdminHandler{
 		snapshots: snapshots,
 		audit:     audit,
-		logger:    logger,
+		logger:    nopLogger(logger),
 	}
 }
 
@@ -40,15 +40,12 @@ func (h *AdminHandler) BackfillSnapshots(c *gin.Context) {
 	rows, err := h.snapshots.BackfillDiscoveryConfigIDs(c.Request.Context())
 	duration := time.Since(start)
 	if err != nil {
-		h.logger.Error("snapshot backfill failed",
-			zap.String("actor", c.GetString("username")),
-			zap.Error(err),
-		)
+		logRequestError(h.logger, c, "snapshot backfill failed", err)
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "backfill failed"})
 		return
 	}
 
-	_ = h.audit.Record(
+	logAuditFailure(h.logger, c, "backfill", "snapshot", "", h.audit.Record(
 		c.Request.Context(),
 		c.GetString("username"),
 		"backfill",
@@ -58,7 +55,7 @@ func (h *AdminHandler) BackfillSnapshots(c *gin.Context) {
 			"rows_updated": rows,
 			"duration_ms":  duration.Milliseconds(),
 		},
-	)
+	))
 
 	c.JSON(http.StatusOK, models.BackfillSnapshotsResponse{
 		RowsUpdated: rows,

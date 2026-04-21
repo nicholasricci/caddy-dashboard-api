@@ -42,6 +42,31 @@ services:
       mariadb:
         condition: service_healthy
 
+  alloy:
+    image: grafana/alloy:v1.8.3
+    profiles: ["loki"]
+    command:
+      - run
+      - /etc/alloy/config.alloy
+      - --storage.path=/var/lib/alloy/data
+      - --server.http.listen-addr=0.0.0.0:12345
+    environment:
+      LOKI_ENABLED: ${LOKI_ENABLED:-false}
+      LOKI_URL: ${LOKI_URL:-}
+      LOKI_USER: ${LOKI_USER:-}
+      LOKI_API_KEY: ${LOKI_API_KEY:-}
+      LOKI_TENANT_ID: ${LOKI_TENANT_ID:-}
+      LOKI_ENVIRONMENT: ${LOKI_ENVIRONMENT:-local}
+      COMPOSE_PROJECT_NAME: ${COMPOSE_PROJECT_NAME:-caddy-dashboard-api}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./docker/loki/alloy-config.alloy:/etc/alloy/config.alloy:ro
+      - alloy-data:/var/lib/alloy/data
+    ports:
+      - "${ALLOY_UI_PORT:-12345}:12345"
+    restart: unless-stopped
+
 volumes:
   go-mod-cache:
   go-build-cache:
+  alloy-data:

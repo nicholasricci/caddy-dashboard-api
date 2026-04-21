@@ -6,14 +6,16 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/nicholasricci/caddy-dashboard/internal/models"
 	"github.com/nicholasricci/caddy-dashboard/internal/services"
+	"go.uber.org/zap"
 )
 
 type AuditHandler struct {
-	svc *services.AuditService
+	svc    *services.AuditService
+	logger *zap.Logger
 }
 
-func NewAuditHandler(svc *services.AuditService) *AuditHandler {
-	return &AuditHandler{svc: svc}
+func NewAuditHandler(svc *services.AuditService, logger *zap.Logger) *AuditHandler {
+	return &AuditHandler{svc: svc, logger: nopLogger(logger)}
 }
 
 // List godoc
@@ -28,6 +30,7 @@ func (h *AuditHandler) List(c *gin.Context) {
 	limit, offset := parseLimitOffset(c)
 	items, total, err := h.svc.ListPaginated(c.Request.Context(), limit, offset)
 	if err != nil {
+		logRequestError(h.logger, c, "list audit logs failed", err)
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "failed to list audit logs"})
 		return
 	}

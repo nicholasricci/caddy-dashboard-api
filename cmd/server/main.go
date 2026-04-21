@@ -104,7 +104,7 @@ func main() {
 	userSvc := services.NewUserService(userRepo)
 	auditSvc := services.NewAuditService(auditRepo)
 
-	authHandler := handlers.NewAuthHandler(authSvc)
+	authHandler := handlers.NewAuthHandler(authSvc, log)
 	healthHandler := handlers.NewHealthHandler(
 		func(ctx context.Context) error {
 			sqlDB, err := db.DB()
@@ -120,11 +120,11 @@ func main() {
 			return nil
 		},
 	)
-	nodeHandler := handlers.NewNodeHandler(nodeSvc, auditSvc)
-	discoveryHandler := handlers.NewDiscoveryHandler(discoverySvc, caddySvc, auditSvc)
-	caddyHandler := handlers.NewCaddyHandler(caddySvc, auditSvc)
-	userHandler := handlers.NewUserHandler(userSvc, auditSvc)
-	auditHandler := handlers.NewAuditHandler(auditSvc)
+	nodeHandler := handlers.NewNodeHandler(nodeSvc, auditSvc, log)
+	discoveryHandler := handlers.NewDiscoveryHandler(discoverySvc, caddySvc, auditSvc, log)
+	caddyHandler := handlers.NewCaddyHandler(caddySvc, auditSvc, log)
+	userHandler := handlers.NewUserHandler(userSvc, auditSvc, log)
+	auditHandler := handlers.NewAuditHandler(auditSvc, log)
 	adminHandler := handlers.NewAdminHandler(snapshotRepo, auditSvc, log)
 
 	router := routes.NewRouter(routes.Dependencies{

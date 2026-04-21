@@ -86,6 +86,25 @@ See `.env.example` for the full list.
 - `GET /api/v1/health`: liveness probe
 - `GET /api/v1/ready`: readiness probe (DB ping + AWS regions configured)
 
+## Optional Loki shipping (Grafana Cloud)
+
+The API already emits structured JSON logs to stdout via Zap. You can optionally ship them to Grafana Cloud Loki using the Docker Compose `alloy` service.
+
+1. Set Loki credentials in `.env` (see `.env.example` keys: `LOKI_URL`, `LOKI_USER`, `LOKI_API_KEY`, `LOKI_TENANT_ID`, `LOKI_ENVIRONMENT`).
+2. Start Compose with the Loki profile:
+
+```bash
+docker compose --profile loki up --build
+```
+
+3. Generate API traffic and query Loki in Grafana Explore, e.g.:
+
+```logql
+{service="caddy-dashboard-api",environment="local"}
+```
+
+This integration is optional: if you do not run the `loki` profile, logging behavior remains unchanged (stdout only).
+
 ## Database migrations
 
 - Use `make migrate` to run schema migrations from `cmd/migrate`.

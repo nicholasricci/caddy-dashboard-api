@@ -46,6 +46,7 @@ tools/mcp-server/    # Server MCP Node/TS per Cursor (dev only)
 
 - File principale: [`configs/config.yaml`](configs/config.yaml) (porta, `gin_mode`, CORS, TTL JWT, regioni AWS, cache Caddy, DSN DB, log level).
 - Variabili d’ambiente: vedi [`.env.example`](.env.example). Rilevanti: `SERVER_PORT` (binding), `DB_*`, `AWS_PROFILE`, `AWS_REGIONS` (lista separata da virgola), `JWT_SECRET` (**obbligatorio**), `CADDY_CACHE_TTL`, `LOG_LEVEL`, `GIN_MODE`.
+- Opzione sviluppo Loki/Grafana Cloud: con `docker compose --profile loki` e servizio Alloy (`docker/loki/alloy-config.alloy`) i log stdout JSON dell’API vengono spediti a Loki usando `LOKI_URL`, `LOKI_USER`, `LOKI_API_KEY`, `LOKI_TENANT_ID`, `LOKI_ENVIRONMENT`.
 - Viper usa prefisso `APP_` con sostituzione `.` → `_` per override (es. variabili annidate).
 - CORS: con `cors_allowed_origins` vuoto si usa `*` senza credentials; per una SPA su altra origine impostare esplicitamente (es. `http://localhost:4200`) in YAML.
 

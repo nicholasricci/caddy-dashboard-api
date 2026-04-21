@@ -8,15 +8,17 @@ import (
 	"github.com/google/uuid"
 	"github.com/nicholasricci/caddy-dashboard/internal/models"
 	"github.com/nicholasricci/caddy-dashboard/internal/services"
+	"go.uber.org/zap"
 )
 
 type UserHandler struct {
-	svc   *services.UserService
-	audit *services.AuditService
+	svc    *services.UserService
+	audit  *services.AuditService
+	logger *zap.Logger
 }
 
-func NewUserHandler(svc *services.UserService, audit *services.AuditService) *UserHandler {
-	return &UserHandler{svc: svc, audit: audit}
+func NewUserHandler(svc *services.UserService, audit *services.AuditService, logger *zap.Logger) *UserHandler {
+	return &UserHandler{svc: svc, audit: audit, logger: nopLogger(logger)}
 }
 
 type createUserRequest struct {
@@ -43,6 +45,7 @@ func (h *UserHandler) List(c *gin.Context) {
 	limit, offset := parseLimitOffset(c)
 	users, total, err := h.svc.ListPaginated(c.Request.Context(), limit, offset)
 	if err != nil {
+		logRequestError(h.logger, c, "list users failed", err)
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "failed to list users"})
 		return
 	}
@@ -70,6 +73,7 @@ func (h *UserHandler) Get(c *gin.Context) {
 			c.JSON(http.StatusNotFound, models.ErrorResponse{Error: "user not found"})
 			return
 		}
+		logRequestError(h.logger, c, "load user failed", err, zap.String("user_id", id.String()))
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "failed to load user"})
 		return
 	}
@@ -111,10 +115,11 @@ func (h *UserHandler) Create(c *gin.Context) {
 			c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "username is required"})
 			return
 		}
+		logRequestError(h.logger, c, "create user failed", err, zap.String("new_username", req.Username))
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "failed to create user"})
 		return
 	}
-	_ = h.audit.Record(c.Request.Context(), c.GetString("username"), "create", "user", u.ID.String(), gin.H{"username": u.Username, "role": u.Role})
+	logAuditFailure(h.logger, c, "create", "user", u.ID.String(), h.audit.Record(c.Request.Context(), c.GetString("username"), "create", "user", u.ID.String(), gin.H{"username": u.Username, "role": u.Role}))
 	c.JSON(http.StatusCreated, u)
 }
 
@@ -163,10 +168,11 @@ func (h *UserHandler) Update(c *gin.Context) {
 			c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "cannot demote the last admin"})
 			return
 		}
+		logRequestError(h.logger, c, "update user failed", err, zap.String("user_id", id.String()))
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "failed to update user"})
 		return
 	}
-	_ = h.audit.Record(c.Request.Context(), c.GetString("username"), "update", "user", u.ID.String(), gin.H{"username": u.Username, "role": u.Role})
+	logAuditFailure(h.logger, c, "update", "user", u.ID.String(), h.audit.Record(c.Request.Context(), c.GetString("username"), "update", "user", u.ID.String(), gin.H{"username": u.Username, "role": u.Role}))
 	c.JSON(http.StatusOK, u)
 }
 
@@ -199,9 +205,10 @@ func (h *UserHandler) Delete(c *gin.Context) {
 			c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "cannot delete the last admin"})
 			return
 		}
+		logRequestError(h.logger, c, "delete user failed", err, zap.String("user_id", id.String()))
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "failed to delete user"})
 		return
 	}
-	_ = h.audit.Record(c.Request.Context(), actor, "delete", "user", id.String(), nil)
+	logAuditFailure(h.logger, c, "delete", "user", id.String(), h.audit.Record(c.Request.Context(), actor, "delete", "user", id.String(), nil))
 	c.Status(http.StatusNoContent)
 }

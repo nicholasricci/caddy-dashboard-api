@@ -12,6 +12,7 @@ import (
 	"github.com/google/uuid"
 	caddysvc "github.com/nicholasricci/caddy-dashboard/internal/caddy"
 	"github.com/nicholasricci/caddy-dashboard/internal/models"
+	"go.uber.org/zap"
 )
 
 type fakeCaddyService struct {
@@ -64,7 +65,7 @@ func TestCaddyHandler_ListConfigIDs_OK(t *testing.T) {
 		listIDs: []models.CaddyConfigIDInfo{
 			{ID: "route-a", HasUpstreams: true, UpstreamCount: 1, Upstreams: []any{map[string]any{"dial": "10.0.0.1:8080"}}},
 		},
-	}, nil)
+	}, nil, zap.NewNop())
 
 	r := gin.New()
 	r.GET("/nodes/:id/config/live/ids", handler.ListConfigIDs)
@@ -82,7 +83,7 @@ func TestCaddyHandler_ConfigByID_NotFound(t *testing.T) {
 	nodeID := uuid.New()
 	handler := NewCaddyHandler(&fakeCaddyService{
 		configByIDErr: caddysvc.ErrConfigIDNotFound,
-	}, nil)
+	}, nil, zap.NewNop())
 
 	r := gin.New()
 	r.GET("/nodes/:id/config/live/ids/:configId", handler.ConfigByID)
@@ -100,7 +101,7 @@ func TestCaddyHandler_UpstreamsByID_InternalError(t *testing.T) {
 	nodeID := uuid.New()
 	handler := NewCaddyHandler(&fakeCaddyService{
 		upstreamsErr: errors.New("boom"),
-	}, nil)
+	}, nil, zap.NewNop())
 
 	r := gin.New()
 	r.GET("/nodes/:id/config/live/ids/:configId/upstreams", handler.UpstreamsByID)
@@ -118,7 +119,7 @@ func TestCaddyHandler_HostsByID_OK(t *testing.T) {
 	nodeID := uuid.New()
 	handler := NewCaddyHandler(&fakeCaddyService{
 		hosts: []string{"10.0.0.1", "api.internal"},
-	}, nil)
+	}, nil, zap.NewNop())
 
 	r := gin.New()
 	r.GET("/nodes/:id/config/live/ids/:configId/hosts", handler.HostsByID)

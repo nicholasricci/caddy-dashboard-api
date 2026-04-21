@@ -11,11 +11,13 @@ import (
 	"github.com/google/uuid"
 	"github.com/nicholasricci/caddy-dashboard/internal/models"
 	"github.com/nicholasricci/caddy-dashboard/internal/services"
+	"go.uber.org/zap"
 )
 
 type NodeHandler struct {
-	svc   *services.NodeService
-	audit *services.AuditService
+	svc    *services.NodeService
+	audit  *services.AuditService
+	logger *zap.Logger
 }
 
 type createNodeRequest struct {
@@ -38,8 +40,8 @@ type updateNodeRequest struct {
 	LastSeenAt *time.Time `json:"last_seen_at"`
 }
 
-func NewNodeHandler(svc *services.NodeService, audit *services.AuditService) *NodeHandler {
-	return &NodeHandler{svc: svc, audit: audit}
+func NewNodeHandler(svc *services.NodeService, audit *services.AuditService, logger *zap.Logger) *NodeHandler {
+	return &NodeHandler{svc: svc, audit: audit, logger: nopLogger(logger)}
 }
 
 // List godoc
@@ -55,6 +57,7 @@ func (h *NodeHandler) List(c *gin.Context) {
 	limit, offset := parseLimitOffset(c)
 	nodes, total, err := h.svc.ListPaginated(c.Request.Context(), limit, offset)
 	if err != nil {
+		logRequestError(h.logger, c, "list nodes failed", err)
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "failed to list nodes"})
 		return
 	}
@@ -93,10 +96,14 @@ func (h *NodeHandler) Create(c *gin.Context) {
 		node.Status = strings.TrimSpace(*req.Status)
 	}
 	if err := h.svc.Create(c.Request.Context(), node); err != nil {
+		logRequestError(h.logger, c, "create node failed", err,
+			zap.String("node_name", node.Name),
+			zap.String("region", node.Region),
+		)
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "failed to create node"})
 		return
 	}
-	_ = h.audit.Record(c.Request.Context(), c.GetString("username"), "create", "node", node.ID.String(), node)
+	logAuditFailure(h.logger, c, "create", "node", node.ID.String(), h.audit.Record(c.Request.Context(), c.GetString("username"), "create", "node", node.ID.String(), node))
 	c.JSON(http.StatusCreated, node)
 }
 
@@ -124,6 +131,7 @@ func (h *NodeHandler) Get(c *gin.Context) {
 			c.JSON(http.StatusNotFound, models.ErrorResponse{Error: "node not found"})
 			return
 		}
+		logRequestError(h.logger, c, "load node failed", err, zap.String("node_id", id.String()))
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "failed to load node"})
 		return
 	}
@@ -156,6 +164,7 @@ func (h *NodeHandler) Update(c *gin.Context) {
 			c.JSON(http.StatusNotFound, models.ErrorResponse{Error: "node not found"})
 			return
 		}
+		logRequestError(h.logger, c, "load node for update failed", err, zap.String("node_id", id.String()))
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "failed to load node"})
 		return
 	}
@@ -197,10 +206,11 @@ func (h *NodeHandler) Update(c *gin.Context) {
 	}
 	node.ID = id
 	if err := h.svc.Update(c.Request.Context(), node); err != nil {
+		logRequestError(h.logger, c, "update node failed", err, zap.String("node_id", id.String()))
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "failed to update node"})
 		return
 	}
-	_ = h.audit.Record(c.Request.Context(), c.GetString("username"), "update", "node", node.ID.String(), req)
+	logAuditFailure(h.logger, c, "update", "node", node.ID.String(), h.audit.Record(c.Request.Context(), c.GetString("username"), "update", "node", node.ID.String(), req))
 	c.JSON(http.StatusOK, node)
 }
 
@@ -239,9 +249,10 @@ func (h *NodeHandler) Delete(c *gin.Context) {
 		return
 	}
 	if err := h.svc.Delete(c.Request.Context(), id); err != nil {
+		logRequestError(h.logger, c, "delete node failed", err, zap.String("node_id", id.String()))
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "failed to delete node"})
 		return
 	}
-	_ = h.audit.Record(c.Request.Context(), c.GetString("username"), "delete", "node", id.String(), nil)
+	logAuditFailure(h.logger, c, "delete", "node", id.String(), h.audit.Record(c.Request.Context(), c.GetString("username"), "delete", "node", id.String(), nil))
 	c.Status(http.StatusNoContent)
 }

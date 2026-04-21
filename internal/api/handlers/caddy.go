@@ -12,11 +12,13 @@ import (
 	caddysvc "github.com/nicholasricci/caddy-dashboard/internal/caddy"
 	"github.com/nicholasricci/caddy-dashboard/internal/models"
 	"github.com/nicholasricci/caddy-dashboard/internal/services"
+	"go.uber.org/zap"
 )
 
 type CaddyHandler struct {
-	svc   caddyService
-	audit *services.AuditService
+	svc    caddyService
+	audit  *services.AuditService
+	logger *zap.Logger
 }
 
 type caddyService interface {
@@ -31,8 +33,8 @@ type caddyService interface {
 	ListSnapshotsPaginated(ctx context.Context, nodeID uuid.UUID, limit, offset int) ([]models.CaddySnapshot, int64, error)
 }
 
-func NewCaddyHandler(svc caddyService, audit *services.AuditService) *CaddyHandler {
-	return &CaddyHandler{svc: svc, audit: audit}
+func NewCaddyHandler(svc caddyService, audit *services.AuditService, logger *zap.Logger) *CaddyHandler {
+	return &CaddyHandler{svc: svc, audit: audit, logger: nopLogger(logger)}
 }
 
 // respondCaddyNodeError writes the appropriate JSON error for node-scoped Caddy operations. Returns true if handled.
@@ -78,10 +80,11 @@ func (h *CaddyHandler) Sync(c *gin.Context) {
 		if respondCaddyNodeError(c, err) {
 			return
 		}
+		logRequestError(h.logger, c, "caddy sync failed", err, zap.String("node_id", nodeID.String()))
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "sync failed"})
 		return
 	}
-	_ = h.audit.Record(c.Request.Context(), username, "sync", "node", nodeID.String(), nil)
+	logAuditFailure(h.logger, c, "sync", "node", nodeID.String(), h.audit.Record(c.Request.Context(), username, "sync", "node", nodeID.String(), nil))
 	c.JSON(http.StatusOK, gin.H{"message": "node config synced"})
 }
 
@@ -108,6 +111,7 @@ func (h *CaddyHandler) LiveConfig(c *gin.Context) {
 		if respondCaddyNodeError(c, err) {
 			return
 		}
+		logRequestError(h.logger, c, "fetch live config failed", err, zap.String("node_id", nodeID.String()))
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "failed to fetch live config"})
 		return
 	}
@@ -137,6 +141,7 @@ func (h *CaddyHandler) ListConfigIDs(c *gin.Context) {
 		if respondCaddyNodeError(c, err) {
 			return
 		}
+		logRequestError(h.logger, c, "list config ids failed", err, zap.String("node_id", nodeID.String()))
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "failed to list config ids"})
 		return
 	}
@@ -176,6 +181,10 @@ func (h *CaddyHandler) ConfigByID(c *gin.Context) {
 			c.JSON(http.StatusNotFound, models.ErrorResponse{Error: "config id not found"})
 			return
 		}
+		logRequestError(h.logger, c, "fetch config fragment failed", err,
+			zap.String("node_id", nodeID.String()),
+			zap.String("config_id", configID),
+		)
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "failed to fetch config fragment"})
 		return
 	}
@@ -215,6 +224,10 @@ func (h *CaddyHandler) UpstreamsByID(c *gin.Context) {
 			c.JSON(http.StatusNotFound, models.ErrorResponse{Error: "config id not found"})
 			return
 		}
+		logRequestError(h.logger, c, "fetch config upstreams failed", err,
+			zap.String("node_id", nodeID.String()),
+			zap.String("config_id", configID),
+		)
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "failed to fetch config upstreams"})
 		return
 	}
@@ -259,6 +272,10 @@ func (h *CaddyHandler) HostsByID(c *gin.Context) {
 			c.JSON(http.StatusNotFound, models.ErrorResponse{Error: "config id not found"})
 			return
 		}
+		logRequestError(h.logger, c, "fetch config hosts failed", err,
+			zap.String("node_id", nodeID.String()),
+			zap.String("config_id", configID),
+		)
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "failed to fetch config hosts"})
 		return
 	}
@@ -312,10 +329,11 @@ func (h *CaddyHandler) Apply(c *gin.Context) {
 		if respondCaddyNodeError(c, err) {
 			return
 		}
+		logRequestError(h.logger, c, "caddy apply failed", err, zap.String("node_id", nodeID.String()))
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "apply failed"})
 		return
 	}
-	_ = h.audit.Record(c.Request.Context(), username, "apply", "node", nodeID.String(), gin.H{"config_size": len(req.Config)})
+	logAuditFailure(h.logger, c, "apply", "node", nodeID.String(), h.audit.Record(c.Request.Context(), username, "apply", "node", nodeID.String(), gin.H{"config_size": len(req.Config)}))
 	c.JSON(http.StatusOK, gin.H{"message": "config applied"})
 }
 
@@ -341,10 +359,11 @@ func (h *CaddyHandler) Reload(c *gin.Context) {
 		if respondCaddyNodeError(c, err) {
 			return
 		}
+		logRequestError(h.logger, c, "caddy reload failed", err, zap.String("node_id", nodeID.String()))
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "reload failed"})
 		return
 	}
-	_ = h.audit.Record(c.Request.Context(), c.GetString("username"), "reload", "node", nodeID.String(), nil)
+	logAuditFailure(h.logger, c, "reload", "node", nodeID.String(), h.audit.Record(c.Request.Context(), c.GetString("username"), "reload", "node", nodeID.String(), nil))
 	c.JSON(http.StatusOK, gin.H{"message": "caddy reloaded"})
 }
 
@@ -372,6 +391,7 @@ func (h *CaddyHandler) ListSnapshots(c *gin.Context) {
 			c.JSON(http.StatusNotFound, models.ErrorResponse{Error: "node not found"})
 			return
 		}
+		logRequestError(h.logger, c, "list node snapshots failed", err, zap.String("node_id", nodeID.String()))
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "failed to list snapshots"})
 		return
 	}
