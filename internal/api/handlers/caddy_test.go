@@ -47,7 +47,9 @@ func (f *fakeCaddyService) GetHostsByID(context.Context, uuid.UUID, string) ([]s
 	return f.hosts, f.hostsErr
 }
 
-func (f *fakeCaddyService) Apply(context.Context, uuid.UUID, json.RawMessage, string) error { return nil }
+func (f *fakeCaddyService) Apply(context.Context, uuid.UUID, json.RawMessage, string) error {
+	return nil
+}
 
 func (f *fakeCaddyService) Reload(context.Context, uuid.UUID) error { return nil }
 
