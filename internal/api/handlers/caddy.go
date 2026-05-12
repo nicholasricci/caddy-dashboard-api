@@ -46,8 +46,24 @@ func respondCaddyNodeError(c *gin.Context, err error) bool {
 		c.JSON(http.StatusNotFound, models.ErrorResponse{Error: "node not found"})
 		return true
 	}
-	if errors.Is(err, caddysvc.ErrNodeNoInstanceID) {
-		c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "node has no instance_id configured"})
+	if errors.Is(err, context.DeadlineExceeded) {
+		c.JSON(http.StatusGatewayTimeout, models.ErrorResponse{Error: "remote operation timed out"})
+		return true
+	}
+	if errors.Is(err, caddysvc.ErrTransportUnsupportedOp) {
+		c.JSON(http.StatusUnprocessableEntity, models.ErrorResponse{Error: err.Error()})
+		return true
+	}
+	if errors.Is(err, caddysvc.ErrTransportNotConfigured) || errors.Is(err, caddysvc.ErrNodeNoInstanceID) {
+		c.JSON(http.StatusUnprocessableEntity, models.ErrorResponse{Error: err.Error()})
+		return true
+	}
+	if errors.Is(err, caddysvc.ErrTransportUnreachable) {
+		c.JSON(http.StatusBadGateway, models.ErrorResponse{Error: err.Error()})
+		return true
+	}
+	if errors.Is(err, caddysvc.ErrUnknownTransport) {
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: err.Error()})
 		return true
 	}
 	return false

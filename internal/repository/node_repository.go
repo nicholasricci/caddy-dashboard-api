@@ -10,8 +10,11 @@ import (
 	"gorm.io/gorm"
 )
 
+// NodeRepository persists Caddy nodes.
 type NodeRepository struct {
 	db *gorm.DB
+	// OnNodeDeleted is invoked after a successful Delete (optional); used to evict SSH pools / caches.
+	OnNodeDeleted func(ctx context.Context, id uuid.UUID)
 }
 
 func NewNodeRepository(db *gorm.DB) *NodeRepository {
@@ -52,7 +55,14 @@ func (r *NodeRepository) Update(ctx context.Context, node *models.CaddyNode) err
 }
 
 func (r *NodeRepository) Delete(ctx context.Context, id uuid.UUID) error {
-	return r.db.WithContext(ctx).Delete(&models.CaddyNode{}, "id = ?", id).Error
+	err := r.db.WithContext(ctx).Delete(&models.CaddyNode{}, "id = ?", id).Error
+	if err != nil {
+		return err
+	}
+	if r.OnNodeDeleted != nil {
+		r.OnNodeDeleted(ctx, id)
+	}
+	return nil
 }
 
 func (r *NodeRepository) UpsertByInstanceOrIP(ctx context.Context, node *models.CaddyNode) error {
@@ -69,7 +79,7 @@ func (r *NodeRepository) UpsertByInstanceOrIP(ctx context.Context, node *models.
 	}
 	if node.PrivateIP != nil && *node.PrivateIP != "" {
 		var existing models.CaddyNode
-		err := db.Where("private_ip = ? AND region = ?", *node.PrivateIP, node.Region).First(&existing).Error
+		err := db.Where("private_ip = ? AND COALESCE(region,'') = ?", *node.PrivateIP, node.RegionString()).First(&existing).Error
 		if err == nil {
 			return r.updateExistingNode(db, &existing, node)
 		}
@@ -100,6 +110,12 @@ func (r *NodeRepository) updateExistingNode(db *gorm.DB, existing, incoming *mod
 	}
 	if incoming.LastSeenAt != nil {
 		updates["last_seen_at"] = incoming.LastSeenAt
+	}
+	if strings.TrimSpace(incoming.Transport) != "" {
+		updates["transport"] = incoming.Transport
+	}
+	if len(incoming.TransportConfig) > 0 {
+		updates["transport_config"] = incoming.TransportConfig
 	}
 	if existing.DiscoveryConfigID == nil && incoming.DiscoveryConfigID != nil {
 		updates["discovery_config_id"] = incoming.DiscoveryConfigID

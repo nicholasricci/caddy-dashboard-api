@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"encoding/json"
 	"errors"
 	"net/http"
 	"strconv"
@@ -21,23 +22,27 @@ type NodeHandler struct {
 }
 
 type createNodeRequest struct {
-	Name       string     `json:"name" binding:"required"`
-	InstanceID *string    `json:"instance_id"`
-	PrivateIP  *string    `json:"private_ip"`
-	Region     string     `json:"region" binding:"required"`
-	SSMEnabled *bool      `json:"ssm_enabled"`
-	Status     *string    `json:"status"`
-	LastSeenAt *time.Time `json:"last_seen_at"`
+	Name            string          `json:"name" binding:"required"`
+	Transport       string          `json:"transport"`
+	Region          *string         `json:"region"`
+	InstanceID      *string         `json:"instance_id"`
+	PrivateIP       *string         `json:"private_ip"`
+	TransportConfig json.RawMessage `json:"transport_config,omitempty" swaggertype:"object"`
+	SSMEnabled      *bool           `json:"ssm_enabled"`
+	Status          *string         `json:"status"`
+	LastSeenAt      *time.Time      `json:"last_seen_at"`
 }
 
 type updateNodeRequest struct {
-	Name       *string    `json:"name"`
-	InstanceID *string    `json:"instance_id"`
-	PrivateIP  *string    `json:"private_ip"`
-	Region     *string    `json:"region"`
-	SSMEnabled *bool      `json:"ssm_enabled"`
-	Status     *string    `json:"status"`
-	LastSeenAt *time.Time `json:"last_seen_at"`
+	Name            *string         `json:"name"`
+	Transport       *string         `json:"transport"`
+	Region          *string         `json:"region"`
+	InstanceID      *string         `json:"instance_id"`
+	PrivateIP       *string         `json:"private_ip"`
+	TransportConfig json.RawMessage `json:"transport_config,omitempty" swaggertype:"object"`
+	SSMEnabled      *bool           `json:"ssm_enabled"`
+	Status          *string         `json:"status"`
+	LastSeenAt      *time.Time      `json:"last_seen_at"`
 }
 
 func NewNodeHandler(svc *services.NodeService, audit *services.AuditService, logger *zap.Logger) *NodeHandler {
@@ -66,13 +71,14 @@ func (h *NodeHandler) List(c *gin.Context) {
 
 // Create godoc
 // @Summary Create node
-// @Description Creates a Caddy node manually (private IP or instance ID)
+// @Description Creates a Caddy node (AWS SSM, SSH, HTTP admin, or inventory-only)
 // @Tags nodes
 // @Accept json
 // @Produce json
-// @Param payload body models.CaddyNode true "Node payload"
+// @Param payload body createNodeRequest true "Node payload"
 // @Success 201 {object} models.CaddyNode
 // @Failure 400 {object} models.ErrorResponse
+// @Failure 422 {object} models.ErrorResponse
 // @Failure 500 {object} models.ErrorResponse
 // @Security BearerAuth
 // @Router /api/v1/nodes [post]
@@ -82,12 +88,21 @@ func (h *NodeHandler) Create(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "invalid request body"})
 		return
 	}
+	tr := strings.TrimSpace(req.Transport)
+	if tr == "" {
+		tr = models.TransportAWSSSM
+	}
 	node := &models.CaddyNode{
 		Name:       strings.TrimSpace(req.Name),
+		Transport:  tr,
 		InstanceID: req.InstanceID,
 		PrivateIP:  req.PrivateIP,
-		Region:     strings.TrimSpace(req.Region),
-		LastSeenAt: req.LastSeenAt,
+	}
+	if req.Region != nil && strings.TrimSpace(*req.Region) != "" {
+		node.Region = models.StringPtr(strings.TrimSpace(*req.Region))
+	}
+	if len(req.TransportConfig) > 0 {
+		node.TransportConfig = append(json.RawMessage(nil), req.TransportConfig...)
 	}
 	if req.SSMEnabled != nil {
 		node.SSMEnabled = *req.SSMEnabled
@@ -95,10 +110,16 @@ func (h *NodeHandler) Create(c *gin.Context) {
 	if req.Status != nil {
 		node.Status = strings.TrimSpace(*req.Status)
 	}
+	node.LastSeenAt = req.LastSeenAt
+
 	if err := h.svc.Create(c.Request.Context(), node); err != nil {
+		if errors.Is(err, services.ErrInvalidNodePayload) {
+			c.JSON(http.StatusUnprocessableEntity, models.ErrorResponse{Error: err.Error()})
+			return
+		}
 		logRequestError(h.logger, c, "create node failed", err,
 			zap.String("node_name", node.Name),
-			zap.String("region", node.Region),
+			zap.String("region", node.RegionString()),
 		)
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "failed to create node"})
 		return
@@ -145,10 +166,11 @@ func (h *NodeHandler) Get(c *gin.Context) {
 // @Accept json
 // @Produce json
 // @Param id path string true "Node ID"
-// @Param payload body models.CaddyNode true "Node payload"
+// @Param payload body updateNodeRequest true "Node payload"
 // @Success 200 {object} models.CaddyNode
 // @Failure 400 {object} models.ErrorResponse
 // @Failure 404 {object} models.ErrorResponse
+// @Failure 422 {object} models.ErrorResponse
 // @Failure 500 {object} models.ErrorResponse
 // @Security BearerAuth
 // @Router /api/v1/nodes/{id} [put]
@@ -176,6 +198,9 @@ func (h *NodeHandler) Update(c *gin.Context) {
 	if req.Name != nil {
 		node.Name = strings.TrimSpace(*req.Name)
 	}
+	if req.Transport != nil {
+		node.Transport = strings.TrimSpace(*req.Transport)
+	}
 	if req.InstanceID != nil {
 		v := strings.TrimSpace(*req.InstanceID)
 		if v == "" {
@@ -193,7 +218,15 @@ func (h *NodeHandler) Update(c *gin.Context) {
 		}
 	}
 	if req.Region != nil {
-		node.Region = strings.TrimSpace(*req.Region)
+		v := strings.TrimSpace(*req.Region)
+		if v == "" {
+			node.Region = nil
+		} else {
+			node.Region = &v
+		}
+	}
+	if len(req.TransportConfig) > 0 {
+		node.TransportConfig = append(json.RawMessage(nil), req.TransportConfig...)
 	}
 	if req.SSMEnabled != nil {
 		node.SSMEnabled = *req.SSMEnabled
@@ -206,6 +239,10 @@ func (h *NodeHandler) Update(c *gin.Context) {
 	}
 	node.ID = id
 	if err := h.svc.Update(c.Request.Context(), node); err != nil {
+		if errors.Is(err, services.ErrInvalidNodePayload) {
+			c.JSON(http.StatusUnprocessableEntity, models.ErrorResponse{Error: err.Error()})
+			return
+		}
 		logRequestError(h.logger, c, "update node failed", err, zap.String("node_id", id.String()))
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "failed to update node"})
 		return

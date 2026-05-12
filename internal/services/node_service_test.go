@@ -61,7 +61,7 @@ func TestNodeService_Get_RepositoryError(t *testing.T) {
 
 func TestNodeService_Get_Success(t *testing.T) {
 	id := uuid.New()
-	node := &models.CaddyNode{ID: id, Name: "edge-1", Region: "eu-west-1"}
+	node := &models.CaddyNode{ID: id, Name: "edge-1", Region: models.StringPtr("eu-west-1")}
 	svc := NewNodeService(&fakeNodeRepo{getNode: node})
 	got, err := svc.Get(context.Background(), id)
 	if err != nil {

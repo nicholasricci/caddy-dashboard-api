@@ -3,6 +3,7 @@ package aws
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 
 	awsSDK "github.com/aws/aws-sdk-go-v2/aws"
@@ -20,8 +21,12 @@ type MultiRegionClient struct {
 }
 
 func NewMultiRegionClient(ctx context.Context, profile string, regions []string) (*MultiRegionClient, error) {
-	cfgMap := make(map[string]awsSDK.Config, len(regions))
+	cfgMap := make(map[string]awsSDK.Config)
 	for _, region := range regions {
+		region = strings.TrimSpace(region)
+		if region == "" {
+			continue
+		}
 		var opts []func(*config.LoadOptions) error
 		opts = append(opts, config.WithRegion(region))
 		if profile != "" {
@@ -37,6 +42,9 @@ func NewMultiRegionClient(ctx context.Context, profile string, regions []string)
 }
 
 func (c *MultiRegionClient) EC2(region string) (*ec2.Client, error) {
+	if c == nil || len(c.configs) == 0 {
+		return nil, fmt.Errorf("aws client not configured")
+	}
 	if v, ok := c.ec2Clients.Load(region); ok {
 		return v.(*ec2.Client), nil
 	}
@@ -50,6 +58,9 @@ func (c *MultiRegionClient) EC2(region string) (*ec2.Client, error) {
 }
 
 func (c *MultiRegionClient) SSM(region string) (*ssm.Client, error) {
+	if c == nil || len(c.configs) == 0 {
+		return nil, fmt.Errorf("aws client not configured")
+	}
 	if v, ok := c.ssmClients.Load(region); ok {
 		return v.(*ssm.Client), nil
 	}
@@ -63,6 +74,9 @@ func (c *MultiRegionClient) SSM(region string) (*ssm.Client, error) {
 }
 
 func (c *MultiRegionClient) SecretsManager(region string) (*secretsmanager.Client, error) {
+	if c == nil || len(c.configs) == 0 {
+		return nil, fmt.Errorf("aws client not configured")
+	}
 	if v, ok := c.secretsClients.Load(region); ok {
 		return v.(*secretsmanager.Client), nil
 	}

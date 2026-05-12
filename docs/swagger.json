@@ -5,7 +5,7 @@
     ],
     "swagger": "2.0",
     "info": {
-        "description": "API for managing Caddy nodes on AWS via SSM.",
+        "description": "API for managing Caddy nodes: AWS SSM, SSH, or direct HTTP admin; discovery includes AWS, static IP, GCP labels, and Azure tags.",
         "title": "Caddy Dashboard API",
         "contact": {},
         "version": "1.0"
@@ -579,7 +579,7 @@
                         "BearerAuth": []
                     }
                 ],
-                "description": "Creates a Caddy node manually (private IP or instance ID)",
+                "description": "Creates a Caddy node (AWS SSM, SSH, HTTP admin, or inventory-only)",
                 "consumes": [
                     "application/json"
                 ],
@@ -597,7 +597,7 @@
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/models.CaddyNode"
+                            "$ref": "#/definitions/handlers.createNodeRequest"
                         }
                     }
                 ],
@@ -610,6 +610,12 @@
                     },
                     "400": {
                         "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
                         "schema": {
                             "$ref": "#/definitions/models.ErrorResponse"
                         }
@@ -705,7 +711,7 @@
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/models.CaddyNode"
+                            "$ref": "#/definitions/handlers.updateNodeRequest"
                         }
                     }
                 ],
@@ -724,6 +730,12 @@
                     },
                     "404": {
                         "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
                         "schema": {
                             "$ref": "#/definitions/models.ErrorResponse"
                         }
@@ -1574,6 +1586,41 @@
                 }
             }
         },
+        "handlers.createNodeRequest": {
+            "type": "object",
+            "required": [
+                "name"
+            ],
+            "properties": {
+                "instance_id": {
+                    "type": "string"
+                },
+                "last_seen_at": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "private_ip": {
+                    "type": "string"
+                },
+                "region": {
+                    "type": "string"
+                },
+                "ssm_enabled": {
+                    "type": "boolean"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "transport": {
+                    "type": "string"
+                },
+                "transport_config": {
+                    "type": "object"
+                }
+            }
+        },
         "handlers.createUserRequest": {
             "type": "object",
             "required": [
@@ -1626,6 +1673,38 @@
             "properties": {
                 "refresh_token": {
                     "type": "string"
+                }
+            }
+        },
+        "handlers.updateNodeRequest": {
+            "type": "object",
+            "properties": {
+                "instance_id": {
+                    "type": "string"
+                },
+                "last_seen_at": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "private_ip": {
+                    "type": "string"
+                },
+                "region": {
+                    "type": "string"
+                },
+                "ssm_enabled": {
+                    "type": "boolean"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "transport": {
+                    "type": "string"
+                },
+                "transport_config": {
+                    "type": "object"
                 }
             }
         },
@@ -1751,10 +1830,17 @@
                     "type": "string"
                 },
                 "ssm_enabled": {
+                    "description": "Deprecated: use Transport == TransportAWSSSM instead; kept for API compatibility.",
                     "type": "boolean"
                 },
                 "status": {
                     "type": "string"
+                },
+                "transport": {
+                    "type": "string"
+                },
+                "transport_config": {
+                    "type": "object"
                 },
                 "updated_at": {
                     "type": "string"

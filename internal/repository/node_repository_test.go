@@ -20,7 +20,7 @@ func TestUpsert_FirstInsert_NoExisting(t *testing.T) {
 		Name:              "node-a",
 		InstanceID:        strPtr("i-abc"),
 		PrivateIP:         strPtr("10.0.0.10"),
-		Region:            "eu-west-1",
+		Region:            models.StringPtr("eu-west-1"),
 		Status:            "online",
 		LastSeenAt:        timePtr(time.Now().UTC()),
 		DiscoveryConfigID: &cfgID,
@@ -50,7 +50,7 @@ func TestUpsert_MatchByInstanceID_UpdatesExisting(t *testing.T) {
 		Name:       "old-name",
 		InstanceID: strPtr("i-match"),
 		PrivateIP:  strPtr("10.0.0.11"),
-		Region:     "eu-west-1",
+		Region:     models.StringPtr("eu-west-1"),
 		Status:     "unknown",
 		LastSeenAt: timePtr(time.Now().Add(-1 * time.Hour).UTC()),
 	}
@@ -62,7 +62,7 @@ func TestUpsert_MatchByInstanceID_UpdatesExisting(t *testing.T) {
 		Name:       "new-name",
 		InstanceID: strPtr("i-match"),
 		PrivateIP:  strPtr("10.0.0.99"),
-		Region:     "eu-west-1",
+		Region:     models.StringPtr("eu-west-1"),
 		Status:     "online",
 		LastSeenAt: timePtr(time.Now().UTC()),
 	}
@@ -93,7 +93,7 @@ func TestUpsert_MatchByPrivateIPAndRegion_UpdatesExisting(t *testing.T) {
 	initial := &models.CaddyNode{
 		Name:      "old",
 		PrivateIP: strPtr("10.0.0.20"),
-		Region:    "eu-west-1",
+		Region:    models.StringPtr("eu-west-1"),
 		Status:    "unknown",
 	}
 	if err := repo.Create(ctx, initial); err != nil {
@@ -103,7 +103,7 @@ func TestUpsert_MatchByPrivateIPAndRegion_UpdatesExisting(t *testing.T) {
 	incoming := &models.CaddyNode{
 		Name:      "new",
 		PrivateIP: strPtr("10.0.0.20"),
-		Region:    "eu-west-1",
+		Region:    models.StringPtr("eu-west-1"),
 		Status:    "online",
 	}
 	if err := repo.UpsertByInstanceOrIP(ctx, incoming); err != nil {
@@ -131,7 +131,7 @@ func TestUpsert_KeepFirst_DoesNotOverwriteDiscoveryConfigID(t *testing.T) {
 	initial := &models.CaddyNode{
 		Name:              "node-keep",
 		InstanceID:        &instanceID,
-		Region:            "eu-west-1",
+		Region:            models.StringPtr("eu-west-1"),
 		Status:            "online",
 		DiscoveryConfigID: &firstCfg,
 	}
@@ -142,7 +142,7 @@ func TestUpsert_KeepFirst_DoesNotOverwriteDiscoveryConfigID(t *testing.T) {
 	incoming := &models.CaddyNode{
 		Name:              "node-keep",
 		InstanceID:        &instanceID,
-		Region:            "eu-west-1",
+		Region:            models.StringPtr("eu-west-1"),
 		Status:            "online",
 		DiscoveryConfigID: &secondCfg,
 	}
@@ -170,7 +170,7 @@ func TestUpsert_FillsDiscoveryConfigIDWhenExistingIsNil(t *testing.T) {
 	initial := &models.CaddyNode{
 		Name:       "node-fill",
 		InstanceID: &instanceID,
-		Region:     "eu-west-1",
+		Region:     models.StringPtr("eu-west-1"),
 		Status:     "online",
 	}
 	if err := repo.Create(ctx, initial); err != nil {
@@ -180,7 +180,7 @@ func TestUpsert_FillsDiscoveryConfigIDWhenExistingIsNil(t *testing.T) {
 	incoming := &models.CaddyNode{
 		Name:              "node-fill",
 		InstanceID:        &instanceID,
-		Region:            "eu-west-1",
+		Region:            models.StringPtr("eu-west-1"),
 		Status:            "online",
 		DiscoveryConfigID: &cfgID,
 	}
@@ -206,7 +206,7 @@ func TestUpsert_DoesNotOverwriteStatusWithEmpty(t *testing.T) {
 	initial := &models.CaddyNode{
 		Name:       "node-status",
 		InstanceID: &instanceID,
-		Region:     "eu-west-1",
+		Region:     models.StringPtr("eu-west-1"),
 		Status:     "online",
 	}
 	if err := repo.Create(ctx, initial); err != nil {
@@ -216,7 +216,7 @@ func TestUpsert_DoesNotOverwriteStatusWithEmpty(t *testing.T) {
 	incoming := &models.CaddyNode{
 		Name:       "node-status",
 		InstanceID: &instanceID,
-		Region:     "eu-west-1",
+		Region:     models.StringPtr("eu-west-1"),
 		Status:     "",
 	}
 	if err := repo.UpsertByInstanceOrIP(ctx, incoming); err != nil {
@@ -242,7 +242,7 @@ func TestUpsert_DoesNotOverwriteLastSeenAtWithNil(t *testing.T) {
 	initial := &models.CaddyNode{
 		Name:       "node-last-seen",
 		InstanceID: &instanceID,
-		Region:     "eu-west-1",
+		Region:     models.StringPtr("eu-west-1"),
 		Status:     "online",
 		LastSeenAt: &lastSeen,
 	}
@@ -253,7 +253,7 @@ func TestUpsert_DoesNotOverwriteLastSeenAtWithNil(t *testing.T) {
 	incoming := &models.CaddyNode{
 		Name:       "node-last-seen",
 		InstanceID: &instanceID,
-		Region:     "eu-west-1",
+		Region:     models.StringPtr("eu-west-1"),
 		Status:     "online",
 		LastSeenAt: nil,
 	}

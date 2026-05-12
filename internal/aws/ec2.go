@@ -20,6 +20,9 @@ func NewEC2Service(clients *MultiRegionClient) *EC2Service {
 }
 
 func (s *EC2Service) DiscoverByTag(ctx context.Context, region, tagKey, tagValue string) ([]models.CaddyNode, error) {
+	if s == nil || s.clients == nil {
+		return nil, fmt.Errorf("aws ec2 client not configured")
+	}
 	client, err := s.clients.EC2(region)
 	if err != nil {
 		return nil, err
@@ -45,13 +48,15 @@ func (s *EC2Service) DiscoverByTag(ctx context.Context, region, tagKey, tagValue
 			instanceID := aws.ToString(inst.InstanceId)
 			privateIP := aws.ToString(inst.PrivateIpAddress)
 			node := models.CaddyNode{
-				Name:       fallback(name, instanceID),
-				InstanceID: optionalString(instanceID),
-				PrivateIP:  optionalString(privateIP),
-				Region:     region,
-				SSMEnabled: true,
-				Status:     string(inst.State.Name),
-				LastSeenAt: &now,
+				Name:            fallback(name, instanceID),
+				InstanceID:      optionalString(instanceID),
+				PrivateIP:       optionalString(privateIP),
+				Region:          models.StringPtr(region),
+				Transport:       models.TransportAWSSSM,
+				SSMEnabled:      true,
+				Status:          string(inst.State.Name),
+				LastSeenAt:      &now,
+				TransportConfig: nil,
 			}
 			nodes = append(nodes, node)
 		}

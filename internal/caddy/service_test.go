@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	awssvc "github.com/nicholasricci/caddy-dashboard/internal/aws"
 	"github.com/nicholasricci/caddy-dashboard/internal/models"
 	"gorm.io/gorm"
 )
@@ -48,20 +47,20 @@ func (f *fakeSnapshotWriter) Create(_ context.Context, s *models.CaddySnapshot) 
 }
 
 type fakeExecutor struct {
-	fetchResult awssvc.CommandResult
+	fetchResult ExecutionResult
 	fetchErr    error
 	fetchCalls  int
 }
 
-func (f *fakeExecutor) ApplyConfig(_ context.Context, _, _ string, _ []byte) (*awssvc.CommandResult, error) {
-	return &awssvc.CommandResult{Status: "Success"}, nil
+func (f *fakeExecutor) ApplyConfig(_ context.Context, _ ExecTarget, _ []byte) (*ExecutionResult, error) {
+	return &ExecutionResult{Status: ExecStatusSuccess}, nil
 }
 
-func (f *fakeExecutor) Reload(_ context.Context, _, _ string) (*awssvc.CommandResult, error) {
-	return &awssvc.CommandResult{Status: "Success"}, nil
+func (f *fakeExecutor) Reload(_ context.Context, _ ExecTarget) (*ExecutionResult, error) {
+	return &ExecutionResult{Status: ExecStatusSuccess}, nil
 }
 
-func (f *fakeExecutor) FetchConfig(_ context.Context, _, _ string) (*awssvc.CommandResult, error) {
+func (f *fakeExecutor) FetchConfig(_ context.Context, _ ExecTarget) (*ExecutionResult, error) {
 	f.fetchCalls++
 	if f.fetchErr != nil {
 		return nil, f.fetchErr
@@ -82,7 +81,7 @@ func TestService_GetLiveConfig_NoInstanceID(t *testing.T) {
 	node := &models.CaddyNode{
 		ID:         uuid.New(),
 		Name:       "n",
-		Region:     "eu-west-1",
+		Region:     models.StringPtr("eu-west-1"),
 		InstanceID: nil,
 	}
 	svc := NewService(&fakeNodeLoader{node: node}, &fakeDiscoveryLoader{}, nil, nil)
@@ -212,13 +211,13 @@ func TestService_ListConfigIDs_AndLookupByID(t *testing.T) {
 	instanceID := "i-123"
 	nodeID := uuid.New()
 	exec := &fakeExecutor{
-		fetchResult: awssvc.CommandResult{
-			Status: "Success",
+		fetchResult: ExecutionResult{
+			Status: ExecStatusSuccess,
 			Stdout: `{"apps":{"http":{"servers":{"srv0":{"routes":[{"@id":"route-main","handle":[{"handler":"reverse_proxy","upstreams":[{"dial":"10.0.0.1:8080"},{"dial":"10.0.0.2:8080"}]}],"match":[{"host":["main.example.com"]}]},{"@id":"route-no-upstreams","handle":[{"handler":"static_response"}]}]}}}}}`,
 		},
 	}
 	svc := NewService(
-		&fakeNodeLoader{node: &models.CaddyNode{ID: nodeID, Region: "eu-west-1", InstanceID: &instanceID}},
+		&fakeNodeLoader{node: &models.CaddyNode{ID: nodeID, Region: models.StringPtr("eu-west-1"), InstanceID: &instanceID}},
 		&fakeDiscoveryLoader{},
 		&fakeSnapshotWriter{},
 		exec,
@@ -265,13 +264,13 @@ func TestService_GetLiveConfig_UsesCacheUntilInvalidated(t *testing.T) {
 	instanceID := "i-abc"
 	nodeID := uuid.New()
 	exec := &fakeExecutor{
-		fetchResult: awssvc.CommandResult{
-			Status: "Success",
+		fetchResult: ExecutionResult{
+			Status: ExecStatusSuccess,
 			Stdout: `{"apps":{"http":{"servers":{"srv0":{"routes":[{"@id":"first"}]}}}}}`,
 		},
 	}
 	svc := NewService(
-		&fakeNodeLoader{node: &models.CaddyNode{ID: nodeID, Region: "eu-west-1", InstanceID: &instanceID}},
+		&fakeNodeLoader{node: &models.CaddyNode{ID: nodeID, Region: models.StringPtr("eu-west-1"), InstanceID: &instanceID}},
 		&fakeDiscoveryLoader{},
 		&fakeSnapshotWriter{},
 		exec,
@@ -314,13 +313,13 @@ func TestService_GetHostsByID(t *testing.T) {
 	instanceID := "i-hosts"
 	nodeID := uuid.New()
 	exec := &fakeExecutor{
-		fetchResult: awssvc.CommandResult{
-			Status: "Success",
+		fetchResult: ExecutionResult{
+			Status: ExecStatusSuccess,
 			Stdout: `{"apps":{"http":{"servers":{"srv0":{"routes":[{"@id":"route-hosts","handle":[{"handler":"reverse_proxy","upstreams":[{"dial":"172.31.10.245:5555"}]}],"match":[{"host":["flower.gruppogaspari.it","alt.gruppogaspari.it","flower.gruppogaspari.it"]}],"terminal":true}]}}}}}`,
 		},
 	}
 	svc := NewService(
-		&fakeNodeLoader{node: &models.CaddyNode{ID: nodeID, Region: "eu-west-1", InstanceID: &instanceID}},
+		&fakeNodeLoader{node: &models.CaddyNode{ID: nodeID, Region: models.StringPtr("eu-west-1"), InstanceID: &instanceID}},
 		&fakeDiscoveryLoader{},
 		&fakeSnapshotWriter{},
 		exec,

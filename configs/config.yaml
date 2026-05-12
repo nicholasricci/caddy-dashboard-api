@@ -22,12 +22,18 @@ auth:
 
 aws:
   profile: ""
+  optional: false
   regions:
     - eu-south-1
     - eu-central-1
 
 caddy:
   cache_ttl: 2m
+  ssh_timeout: 2m
+  ssh_idle_ttl: 5m
+  http_admin_timeout: 60s
+  http_max_response_body: 33554432
+  secret_cache_ttl: 5m
 
 database:
   host: ""

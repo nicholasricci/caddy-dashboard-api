@@ -46,12 +46,18 @@ type AuthConfig struct {
 }
 
 type AWSConfig struct {
-	Profile string   `mapstructure:"profile"`
-	Regions []string `mapstructure:"regions"`
+	Profile  string   `mapstructure:"profile"`
+	Regions  []string `mapstructure:"regions"`
+	Optional bool     `mapstructure:"optional"`
 }
 
 type CaddyConfig struct {
-	CacheTTL time.Duration `mapstructure:"cache_ttl"`
+	CacheTTL            time.Duration `mapstructure:"cache_ttl"`
+	SSHTimeout          time.Duration `mapstructure:"ssh_timeout"`
+	SSHIdleTTL          time.Duration `mapstructure:"ssh_idle_ttl"`
+	HTTPAdminTimeout    time.Duration `mapstructure:"http_admin_timeout"`
+	HTTPMaxResponseBody int64         `mapstructure:"http_max_response_body"`
+	SecretCacheTTL      time.Duration `mapstructure:"secret_cache_ttl"`
 }
 
 type DatabaseConfig struct {
@@ -122,12 +128,24 @@ func Load() (*Config, error) {
 
 	// AWS
 	v.SetDefault("aws.regions", []string{"eu-south-1", "eu-central-1"})
+	v.SetDefault("aws.optional", false)
 	v.BindEnv("aws.profile", "AWS_PROFILE")
 	v.BindEnv("aws.regions", "AWS_REGIONS")
+	v.BindEnv("aws.optional", "AWS_OPTIONAL")
 
 	// Caddy
 	v.SetDefault("caddy.cache_ttl", "2m")
+	v.SetDefault("caddy.ssh_timeout", "2m")
+	v.SetDefault("caddy.ssh_idle_ttl", "5m")
+	v.SetDefault("caddy.http_admin_timeout", "60s")
+	v.SetDefault("caddy.http_max_response_body", 33554432)
+	v.SetDefault("caddy.secret_cache_ttl", "5m")
 	_ = v.BindEnv("caddy.cache_ttl", "CADDY_CACHE_TTL")
+	_ = v.BindEnv("caddy.ssh_timeout", "CADDY_SSH_TIMEOUT")
+	_ = v.BindEnv("caddy.ssh_idle_ttl", "CADDY_SSH_IDLE_TTL")
+	_ = v.BindEnv("caddy.http_admin_timeout", "CADDY_HTTP_ADMIN_TIMEOUT")
+	_ = v.BindEnv("caddy.http_max_response_body", "CADDY_HTTP_MAX_RESPONSE_BODY")
+	_ = v.BindEnv("caddy.secret_cache_ttl", "CADDY_SECRET_CACHE_TTL")
 
 	// DB
 	v.BindEnv("database.host", "DB_HOST")

@@ -18,6 +18,9 @@ func NewSecretsService(clients *MultiRegionClient) *SecretsService {
 }
 
 func (s *SecretsService) GetSecretString(ctx context.Context, region, secretARN string) (string, error) {
+	if s == nil || s.clients == nil {
+		return "", fmt.Errorf("aws secrets manager client not configured")
+	}
 	client, err := s.clients.SecretsManager(region)
 	if err != nil {
 		return "", err

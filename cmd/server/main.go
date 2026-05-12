@@ -10,15 +10,20 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	_ "github.com/nicholasricci/caddy-dashboard/docs"
 	"github.com/nicholasricci/caddy-dashboard/internal/api/handlers"
 	"github.com/nicholasricci/caddy-dashboard/internal/api/routes"
 	"github.com/nicholasricci/caddy-dashboard/internal/auth"
 	awssvc "github.com/nicholasricci/caddy-dashboard/internal/aws"
 	caddysvc "github.com/nicholasricci/caddy-dashboard/internal/caddy"
+	"github.com/nicholasricci/caddy-dashboard/internal/cloud/azure"
+	gcpcloud "github.com/nicholasricci/caddy-dashboard/internal/cloud/gcp"
 	"github.com/nicholasricci/caddy-dashboard/internal/config"
 	"github.com/nicholasricci/caddy-dashboard/internal/database"
+	"github.com/nicholasricci/caddy-dashboard/internal/models"
 	"github.com/nicholasricci/caddy-dashboard/internal/repository"
+	"github.com/nicholasricci/caddy-dashboard/internal/secrets"
 	"github.com/nicholasricci/caddy-dashboard/internal/services"
 	"github.com/nicholasricci/caddy-dashboard/pkg/logger"
 	"go.uber.org/zap"
@@ -27,7 +32,7 @@ import (
 
 // @title Caddy Dashboard API
 // @version 1.0
-// @description API for managing Caddy nodes on AWS via SSM.
+// @description API for managing Caddy nodes: AWS SSM, SSH, or direct HTTP admin; discovery includes AWS, static IP, GCP labels, and Azure tags.
 // @BasePath /
 // @schemes http https
 // @securityDefinitions.apikey BearerAuth
@@ -66,10 +71,21 @@ func main() {
 			log.Fatal("database migration failed", zap.Error(err))
 		}
 	}
+	if err := database.BackfillCaddyNodes(db); err != nil {
+		log.Warn("node transport backfill failed", zap.Error(err))
+	}
 
-	awsClients, err := awssvc.NewMultiRegionClient(ctx, cfg.AWS.Profile, cfg.AWS.Regions)
-	if err != nil {
-		log.Fatal("aws client init failed", zap.Error(err))
+	var awsClients *awssvc.MultiRegionClient
+	if len(cfg.AWS.Regions) > 0 {
+		c, err := awssvc.NewMultiRegionClient(ctx, cfg.AWS.Profile, cfg.AWS.Regions)
+		if err != nil {
+			log.Fatal("aws client init failed", zap.Error(err))
+		}
+		awsClients = c
+	} else if !cfg.AWS.Optional {
+		log.Fatal("aws.regions is empty; set regions in config or aws.optional=true")
+	} else {
+		log.Info("starting without AWS (no regions configured, aws.optional=true)")
 	}
 
 	nodeRepo := repository.NewNodeRepository(db)
@@ -86,20 +102,52 @@ func main() {
 	refreshRepo := repository.NewRefreshTokenRepository(db)
 	auditRepo := repository.NewAuditRepository(db)
 	authSvc := auth.NewService(cfg.Auth, userRepo, refreshRepo)
-	ec2Svc := awssvc.NewEC2Service(awsClients)
-	ssmSvc := awssvc.NewSSMService(awsClients)
-	executor := caddysvc.NewSSMExecutor(ssmSvc)
+
+	var ec2Svc *awssvc.EC2Service
+	var ssmSvc *awssvc.SSMService
+	var secretsSvc *awssvc.SecretsService
+	if awsClients != nil {
+		ec2Svc = awssvc.NewEC2Service(awsClients)
+		ssmSvc = awssvc.NewSSMService(awsClients)
+		secretsSvc = awssvc.NewSecretsService(awsClients)
+	}
+
+	secretResolver := secrets.NewResolver(secretsSvc, cfg.Caddy.SecretCacheTTL)
+	sshPool := caddysvc.NewSSHPool(cfg.Caddy.SSHIdleTTL)
+
+	var ssmExec caddysvc.RemoteExecutor
+	if ssmSvc != nil {
+		ssmExec = caddysvc.NewSSMExecutor(ssmSvc)
+	} else {
+		ssmExec = &caddysvc.ErrRemoteExecutor{Err: caddysvc.ErrTransportNotConfigured}
+	}
+	httpExec := caddysvc.NewHTTPAdminExecutor(secretResolver, cfg.Caddy.HTTPAdminTimeout, cfg.Caddy.HTTPMaxResponseBody)
+	sshExec := caddysvc.NewSSHExecutor(sshPool, secretResolver, cfg.Caddy.SSHTimeout, cfg.Caddy.SSHTimeout)
+	dispatcher := caddysvc.NewDispatcher(map[string]caddysvc.RemoteExecutor{
+		models.TransportAWSSSM:    ssmExec,
+		models.TransportHTTPAdmin: httpExec,
+		models.TransportSSH:       sshExec,
+	})
 	internalCaddySvc := caddysvc.NewService(
 		nodeRepo,
 		discoveryRepo,
 		snapshotRepo,
-		executor,
+		dispatcher,
 		caddysvc.WithCache(caddysvc.NewInMemoryConfigCacheStore()),
 		caddysvc.WithCacheTTL(cfg.Caddy.CacheTTL),
 	)
+	nodeRepo.OnNodeDeleted = func(_ context.Context, id uuid.UUID) {
+		sshPool.Evict(id.String())
+		internalCaddySvc.PurgeNodeState(id)
+	}
 
 	nodeSvc := services.NewNodeService(nodeRepo)
-	discoverySvc := services.NewDiscoveryService(discoveryRepo, nodeRepo, ec2Svc, ssmSvc)
+	discoverySvc := services.NewDiscoveryService(discoveryRepo, nodeRepo, services.DiscoveryDeps{
+		EC2:       ec2Svc,
+		SSM:       ssmSvc,
+		GCPLabels: gcpcloud.NewRunner(),
+		AzureTags: azure.NewRunner(),
+	})
 	caddySvc := services.NewCaddyService(internalCaddySvc, nodeRepo, discoveryRepo, snapshotRepo)
 	userSvc := services.NewUserService(userRepo)
 	auditSvc := services.NewAuditService(auditRepo)
@@ -112,12 +160,6 @@ func main() {
 				return err
 			}
 			return sqlDB.PingContext(ctx)
-		},
-		func(context.Context) error {
-			if len(cfg.AWS.Regions) == 0 {
-				return errors.New("no aws regions configured")
-			}
-			return nil
 		},
 	)
 	nodeHandler := handlers.NewNodeHandler(nodeSvc, auditSvc, log)

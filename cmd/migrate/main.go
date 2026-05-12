@@ -20,5 +20,8 @@ func main() {
 	if err := database.AutoMigrate(db); err != nil {
 		log.Fatalf("automigrate failed: %v", err)
 	}
+	if err := database.BackfillCaddyNodes(db); err != nil {
+		log.Fatalf("node backfill failed: %v", err)
+	}
 	log.Printf("migrations completed")
 }

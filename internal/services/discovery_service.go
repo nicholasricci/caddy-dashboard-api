@@ -21,7 +21,19 @@ var (
 	ErrInvalidSnapshotScope          = errors.New("invalid snapshot scope")
 )
 
-// discoveryRepository is satisfied by *repository.DiscoveryRepository; narrowed for tests.
+// CloudDiscoverer lists VMs for non-AWS discovery methods.
+type CloudDiscoverer interface {
+	Discover(ctx context.Context, cfg *models.DiscoveryConfig) ([]models.CaddyNode, error)
+}
+
+// DiscoveryDeps wires cloud discovery implementations (optional beyond AWS).
+type DiscoveryDeps struct {
+	EC2       *awssvc.EC2Service
+	SSM       *awssvc.SSMService
+	GCPLabels CloudDiscoverer
+	AzureTags CloudDiscoverer
+}
+
 type discoveryRepository interface {
 	List(ctx context.Context) ([]models.DiscoveryConfig, error)
 	ListPaginated(ctx context.Context, limit, offset int) ([]models.DiscoveryConfig, int64, error)
@@ -38,16 +50,14 @@ type discoveryNodeWriter interface {
 type DiscoveryService struct {
 	repo     discoveryRepository
 	nodeRepo discoveryNodeWriter
-	ec2      *awssvc.EC2Service
-	ssm      *awssvc.SSMService
+	deps     DiscoveryDeps
 }
 
-func NewDiscoveryService(repo discoveryRepository, nodeRepo discoveryNodeWriter, ec2 *awssvc.EC2Service, ssm *awssvc.SSMService) *DiscoveryService {
+func NewDiscoveryService(repo discoveryRepository, nodeRepo discoveryNodeWriter, deps DiscoveryDeps) *DiscoveryService {
 	return &DiscoveryService{
 		repo:     repo,
 		nodeRepo: nodeRepo,
-		ec2:      ec2,
-		ssm:      ssm,
+		deps:     deps,
 	}
 }
 
@@ -129,17 +139,39 @@ func (s *DiscoveryService) Run(ctx context.Context, id uuid.UUID) (int, error) {
 	var nodes []models.CaddyNode
 	switch cfg.Method {
 	case models.DiscoveryMethodAWSTag:
-		nodes, err = s.ec2.DiscoverByTag(ctx, cfg.Region, cfg.TagKey, cfg.TagValue)
+		if s.deps.EC2 == nil {
+			return 0, fmt.Errorf("%w: aws_tag requires AWS EC2 client", ErrDiscoveryMethodNotImplemented)
+		}
+		nodes, err = s.deps.EC2.DiscoverByTag(ctx, cfg.Region, cfg.TagKey, cfg.TagValue)
 		if err != nil {
 			return 0, err
 		}
 	case models.DiscoveryMethodAWSSSM:
-		nodes, err = s.ssm.DiscoverManagedInstances(ctx, cfg.Region)
+		if s.deps.SSM == nil {
+			return 0, fmt.Errorf("%w: aws_ssm requires AWS SSM client", ErrDiscoveryMethodNotImplemented)
+		}
+		nodes, err = s.deps.SSM.DiscoverManagedInstances(ctx, cfg.Region)
 		if err != nil {
 			return 0, err
 		}
 	case models.DiscoveryMethodStaticIP:
 		nodes, err = staticIPNodes(cfg)
+		if err != nil {
+			return 0, err
+		}
+	case models.DiscoveryMethodGCPLabels:
+		if s.deps.GCPLabels == nil {
+			return 0, fmt.Errorf("%w: gcp_labels runner not configured", ErrDiscoveryMethodNotImplemented)
+		}
+		nodes, err = s.deps.GCPLabels.Discover(ctx, cfg)
+		if err != nil {
+			return 0, err
+		}
+	case models.DiscoveryMethodAzureTags:
+		if s.deps.AzureTags == nil {
+			return 0, fmt.Errorf("%w: azure_tags runner not configured", ErrDiscoveryMethodNotImplemented)
+		}
+		nodes, err = s.deps.AzureTags.Discover(ctx, cfg)
 		if err != nil {
 			return 0, err
 		}
@@ -160,11 +192,15 @@ func (s *DiscoveryService) Run(ctx context.Context, id uuid.UUID) (int, error) {
 }
 
 type staticDiscoveryParams struct {
-	Endpoints []struct {
-		PrivateIP string `json:"private_ip"`
-		Name      string `json:"name"`
-		Region    string `json:"region"`
-	} `json:"endpoints"`
+	Endpoints []staticEndpoint `json:"endpoints"`
+}
+
+type staticEndpoint struct {
+	PrivateIP       string          `json:"private_ip"`
+	Name            string          `json:"name"`
+	Region          string          `json:"region"`
+	Transport       string          `json:"transport"`
+	TransportConfig json.RawMessage `json:"transport_config"`
 }
 
 func staticIPNodes(cfg *models.DiscoveryConfig) ([]models.CaddyNode, error) {
@@ -194,14 +230,35 @@ func staticIPNodes(cfg *models.DiscoveryConfig) ([]models.CaddyNode, error) {
 			name = ip
 		}
 		ipCopy := ip
-		out = append(out, models.CaddyNode{
+		tr := strings.TrimSpace(strings.ToLower(e.Transport))
+		if tr == "" && len(e.TransportConfig) > 0 {
+			var probe struct {
+				BaseURL string `json:"base_url"`
+			}
+			_ = json.Unmarshal(e.TransportConfig, &probe)
+			if strings.TrimSpace(probe.BaseURL) != "" {
+				tr = models.TransportHTTPAdmin
+			}
+		}
+		if tr == "" {
+			tr = models.TransportInventoryOnly
+		}
+		if _, ok := models.ValidNodeTransports[tr]; !ok {
+			return nil, fmt.Errorf("invalid endpoint transport %q", tr)
+		}
+		node := models.CaddyNode{
 			Name:       name,
 			PrivateIP:  &ipCopy,
-			Region:     region,
-			SSMEnabled: true,
+			Region:     models.StringPtr(region),
+			Transport:  tr,
+			SSMEnabled: tr == models.TransportAWSSSM,
 			Status:     "static",
 			LastSeenAt: &now,
-		})
+		}
+		if len(e.TransportConfig) > 0 {
+			node.TransportConfig = append(json.RawMessage(nil), e.TransportConfig...)
+		}
+		out = append(out, node)
 	}
 	if len(out) == 0 {
 		return nil, fmt.Errorf("no valid private_ip entries in parameters.endpoints")

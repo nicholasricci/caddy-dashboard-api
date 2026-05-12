@@ -1,6 +1,8 @@
 # Caddy Dashboard MCP (development only)
 
-Local MCP server for Cursor: read the Swagger spec and run **safe** HTTP calls against the Go API (`GET /api/v1/*` and `POST` only on `/api/v1/auth/login`, `/api/v1/auth/refresh`, `/api/v1/auth/logout`, `/api/v1/snapshots/backfill`). This includes read-only Caddy live-inspection endpoints such as `/api/v1/nodes/{id}/config/live/ids`. It does not start unless `CADDY_MCP_DEV=1`.
+Local MCP server for Cursor: read the Swagger spec and run **safe** HTTP calls against the Go API (`GET /api/v1/*` and `POST` only on `/api/v1/auth/login`, `/api/v1/auth/refresh`, `/api/v1/auth/logout`, `/api/v1/snapshots/backfill`). This includes read-only Caddy live-inspection endpoints such as `/api/v1/nodes/{id}/config/live/ids`. Node create/update/delete and Caddy mutations (apply/reload/sync, discovery run) stay **out of scope** for `api_request` by design. It does not start unless `CADDY_MCP_DEV=1`.
+
+The API models **CaddyNode** with `transport` (`aws_ssm`, `ssh`, `http_admin`, `inventory_only`), optional `transport_config` (JSON), and nullable `region` (required at runtime for SSM). Discovery supports `gcp_labels` and `azure_tags` among other methods; the MCP tools only reflect whatever is in the loaded Swagger (`docs/swagger.json` or live `/swagger/doc.json`). If you run the API without AWS regions, set `AWS_OPTIONAL=1` (or equivalent config) on the **API** process — the MCP server does not talk to AWS directly.
 
 ## Build
 
@@ -22,12 +24,12 @@ Use **absolute paths** for `command`/`args`. Example (adjust `CADDY_DASHBOARD_RO
     "caddy-dashboard-api": {
       "command": "node",
       "args": [
-        "/home/you/Documents/github/nicholasricci/caddy-dashboard/tools/mcp-server/dist/index.js"
+        "/home/you/Documents/github/nicholasricci/caddy-dashboard-api/tools/mcp-server/dist/index.js"
       ],
       "env": {
         "CADDY_MCP_DEV": "1",
         "CADDY_API_BASE_URL": "http://127.0.0.1:8080",
-        "CADDY_DASHBOARD_ROOT": "/home/you/Documents/github/nicholasricci/caddy-dashboard",
+        "CADDY_DASHBOARD_ROOT": "/home/you/Documents/github/nicholasricci/caddy-dashboard-api",
         "CADDY_API_TOKEN": ""
       }
     }
@@ -50,7 +52,7 @@ Do **not** commit real tokens. Prefer user-level MCP settings or a local file ig
 | `list_api_operations` | Compact list of operations; optional filter string. |
 | `api_request` | Safe `GET`/`POST` as described above; blocks apply/reload/sync/discovery run paths. Supports pagination query params like `?limit=20&offset=0`, including discovery snapshot reads such as `/api/v1/discovery/{id}/snapshots` and Caddy live config ID/upstream reads under `/api/v1/nodes/{id}/config/live/ids`. Also supports admin write backfill `POST /api/v1/snapshots/backfill` (rate-limited, admin-only). |
 
-When you refresh the OpenAPI spec after backend changes, `snapshot_scope` on discovery payloads and discovery-group snapshot routes are available through `get_openapi` and `list_api_operations`.
+After backend changes, regenerate Swagger in the repo (`make swagger`) so `docs/swagger.json` matches the API; then `get_openapi` with `source=file` or `list_api_operations` reflect new fields (e.g. `transport`, `transport_config`) and routes. `snapshot_scope` on discovery payloads and discovery-group snapshot routes are documented the same way.
 
 ## Security notes
 

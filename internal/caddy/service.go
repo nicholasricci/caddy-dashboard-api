@@ -11,14 +11,12 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	awssvc "github.com/nicholasricci/caddy-dashboard/internal/aws"
 	"github.com/nicholasricci/caddy-dashboard/internal/models"
 	"github.com/nicholasricci/caddy-dashboard/internal/repository"
 	"gorm.io/datatypes"
 )
 
-// ErrNodeNoInstanceID is returned when a node cannot be reached via SSM (missing EC2 instance id).
-var ErrNodeNoInstanceID = errors.New("node has no instance_id configured")
+// ErrConfigIDNotFound is returned when a requested @id is not present in the live config.
 var ErrConfigIDNotFound = errors.New("config @id not found")
 
 // nodeLoader is satisfied by *repository.NodeRepository; narrowed for tests.
@@ -34,24 +32,18 @@ type snapshotWriter interface {
 	Create(ctx context.Context, s *models.CaddySnapshot) error
 }
 
-type configExecutor interface {
-	ApplyConfig(ctx context.Context, region, instanceID string, payload []byte) (*awssvc.CommandResult, error)
-	Reload(ctx context.Context, region, instanceID string) (*awssvc.CommandResult, error)
-	FetchConfig(ctx context.Context, region, instanceID string) (*awssvc.CommandResult, error)
-}
-
 type Service struct {
 	nodes       nodeLoader
 	discoveries discoveryLoader
 	snapshots   snapshotWriter
-	executor    configExecutor
+	executor    RemoteExecutor
 	cache       ConfigCacheStore
 	cacheTTL    time.Duration
 	locksMu     sync.Mutex
 	locks       map[uuid.UUID]*sync.Mutex
 }
 
-func NewService(nodes nodeLoader, discoveries discoveryLoader, snapshots snapshotWriter, executor configExecutor, opts ...Option) *Service {
+func NewService(nodes nodeLoader, discoveries discoveryLoader, snapshots snapshotWriter, executor RemoteExecutor, opts ...Option) *Service {
 	s := &Service{
 		nodes:       nodes,
 		discoveries: discoveries,
@@ -81,15 +73,19 @@ func (s *Service) SyncNodeConfig(ctx context.Context, nodeID uuid.UUID, requeste
 		}
 		return err
 	}
-	if node.InstanceID == nil || *node.InstanceID == "" {
-		return ErrNodeNoInstanceID
+	if node.EffectiveTransport() == models.TransportInventoryOnly {
+		return ErrTransportUnsupportedOp
 	}
-	res, err := s.executor.FetchConfig(ctx, node.Region, *node.InstanceID)
+	target, err := BuildExecTarget(node)
 	if err != nil {
 		return err
 	}
-	if res.Status != "Success" {
-		return fmt.Errorf("ssm command status: %s: %s", res.Status, res.Stderr)
+	res, err := s.executor.FetchConfig(ctx, target)
+	if err != nil {
+		return err
+	}
+	if res.Status != ExecStatusSuccess {
+		return fmt.Errorf("remote fetch config: status=%s stderr=%s", res.Status, res.Stderr)
 	}
 	payload := []byte(res.Stdout)
 	if err := s.storeSnapshot(ctx, node, payload, requestedBy); err != nil {
@@ -202,15 +198,19 @@ func (s *Service) ApplyConfig(ctx context.Context, nodeID uuid.UUID, payload []b
 		}
 		return err
 	}
-	if node.InstanceID == nil || *node.InstanceID == "" {
-		return ErrNodeNoInstanceID
+	if node.EffectiveTransport() == models.TransportInventoryOnly {
+		return ErrTransportUnsupportedOp
 	}
-	res, err := s.executor.ApplyConfig(ctx, node.Region, *node.InstanceID, payload)
+	target, err := BuildExecTarget(node)
 	if err != nil {
 		return err
 	}
-	if res.Status != "Success" {
-		return fmt.Errorf("ssm command status: %s: %s", res.Status, res.Stderr)
+	res, err := s.executor.ApplyConfig(ctx, target, payload)
+	if err != nil {
+		return err
+	}
+	if res.Status != ExecStatusSuccess {
+		return fmt.Errorf("remote apply: status=%s stderr=%s", res.Status, res.Stderr)
 	}
 	if err := s.storeSnapshot(ctx, node, payload, requestedBy); err != nil {
 		return err
@@ -229,15 +229,19 @@ func (s *Service) Reload(ctx context.Context, nodeID uuid.UUID) error {
 		}
 		return err
 	}
-	if node.InstanceID == nil || *node.InstanceID == "" {
-		return ErrNodeNoInstanceID
+	if node.EffectiveTransport() == models.TransportInventoryOnly {
+		return ErrTransportUnsupportedOp
 	}
-	res, err := s.executor.Reload(ctx, node.Region, *node.InstanceID)
+	target, err := BuildExecTarget(node)
 	if err != nil {
 		return err
 	}
-	if res.Status != "Success" {
-		return fmt.Errorf("ssm command status: %s: %s", res.Status, res.Stderr)
+	res, err := s.executor.Reload(ctx, target)
+	if err != nil {
+		return err
+	}
+	if res.Status != ExecStatusSuccess {
+		return fmt.Errorf("remote reload: status=%s stderr=%s", res.Status, res.Stderr)
 	}
 	s.cache.Invalidate(nodeID)
 	return nil
@@ -260,17 +264,21 @@ func (s *Service) getIndexedConfig(ctx context.Context, nodeID uuid.UUID) (index
 		}
 		return indexedConfig{}, err
 	}
-	if node.InstanceID == nil || *node.InstanceID == "" {
-		return indexedConfig{}, ErrNodeNoInstanceID
+	if node.EffectiveTransport() == models.TransportInventoryOnly {
+		return indexedConfig{}, ErrTransportUnsupportedOp
 	}
-	res, err := s.executor.FetchConfig(ctx, node.Region, *node.InstanceID)
+	target, err := BuildExecTarget(node)
 	if err != nil {
 		return indexedConfig{}, err
 	}
-	if res.Status != "Success" {
-		return indexedConfig{}, fmt.Errorf("ssm command status: %s: %s", res.Status, res.Stderr)
+	res, err := s.executor.FetchConfig(ctx, target)
+	if err != nil {
+		return indexedConfig{}, err
 	}
-	return s.cacheIndexedConfig(nodeID, []byte(res.Stdout), "ssm")
+	if res.Status != ExecStatusSuccess {
+		return indexedConfig{}, fmt.Errorf("remote fetch config: status=%s stderr=%s", res.Status, res.Stderr)
+	}
+	return s.cacheIndexedConfig(nodeID, []byte(res.Stdout), "remote")
 }
 
 func (s *Service) cacheIndexedConfig(nodeID uuid.UUID, raw []byte, source string) (indexedConfig, error) {
@@ -498,4 +506,12 @@ func WithCacheTTL(ttl time.Duration) Option {
 			s.cacheTTL = ttl
 		}
 	}
+}
+
+// PurgeNodeState drops per-node locks and cache entries (e.g. after node delete).
+func (s *Service) PurgeNodeState(id uuid.UUID) {
+	s.locksMu.Lock()
+	delete(s.locks, id)
+	s.locksMu.Unlock()
+	s.cache.Invalidate(id)
 }

@@ -45,7 +45,7 @@ tools/mcp-server/    # Server MCP Node/TS per Cursor (dev only)
 ## Configurazione
 
 - File principale: [`configs/config.yaml`](configs/config.yaml) (porta, `gin_mode`, CORS, TTL JWT, regioni AWS, cache Caddy, DSN DB, log level).
-- Variabili d’ambiente: vedi [`.env.example`](.env.example). Rilevanti: `SERVER_PORT` (binding), `DB_*`, `AWS_PROFILE`, `AWS_REGIONS` (lista separata da virgola), `JWT_SECRET` (**obbligatorio**), `CADDY_CACHE_TTL`, `LOG_LEVEL`, `GIN_MODE`.
+- Variabili d’ambiente: vedi [`.env.example`](.env.example). Rilevanti: `SERVER_PORT`, `DB_*`, `AWS_PROFILE`, `AWS_REGIONS`, **`AWS_OPTIONAL`** (consente avvio senza regioni AWS), `CADDY_*` (cache, timeout SSH/HTTP admin, ecc.), `JWT_SECRET` (**obbligatorio**), `LOG_LEVEL`, `GIN_MODE`.
 - Opzione sviluppo Loki/Grafana Cloud: con `docker compose --profile loki` e servizio Alloy (`docker/loki/alloy-config.alloy`) i log stdout JSON dell’API vengono spediti a Loki usando `LOKI_URL`, `LOKI_USER`, `LOKI_API_KEY`, `LOKI_TENANT_ID`, `LOKI_ENVIRONMENT`.
 - Viper usa prefisso `APP_` con sostituzione `.` → `_` per override (es. variabili annidate).
 - CORS: con `cors_allowed_origins` vuoto si usa `*` senza credentials; per una SPA su altra origine impostare esplicitamente (es. `http://localhost:4200`) in YAML.
@@ -72,8 +72,8 @@ Endpoint principali (dettaglio in [`internal/api/routes/routes.go`](internal/api
 
 ## Dominio funzionale
 
-- **Nodo (`CaddyNode`)**: istanza/registrazione con IP privato, instance ID, regione, stato, flag SSM, ecc.
-- **Discovery (`DiscoveryConfig`)**: regole per trovare nodi (metodi documentati in Swagger; alcuni possono essere non implementati — vedere errori `501` / messaggi servizio).
+- **Nodo (`CaddyNode`)**: istanza/registrazione con IP privato, instance ID (opzionale per `aws_ssm`), `region` (obbligatoria per SSM), campo **`transport`** (`aws_ssm`, `ssh`, `http_admin`, `inventory_only`) e **`transport_config`** (JSON: es. `base_url` per HTTP admin, `user`/`private_key_ref`/`known_hosts_ref` per SSH). `ssm_enabled` è deprecato (derivato da `transport`). Operazioni Caddy usano un dispatcher (SSM / SSH / HTTP).
+- **Discovery (`DiscoveryConfig`)**: regole per trovare nodi (`aws_tag`, `aws_ssm`, `static_ip`, `gcp_labels`, `azure_tags`; `aws_cidr` non implementato). Metodi GCP/Azure richiedono credenziali cloud (ADC / DefaultAzureCredential) e `parameters` JSON documentati in Swagger.
 - **Snapshot**: versioni di configurazione Caddy persistite dopo sync/apply, con scope configurabile per `DiscoveryConfig` (`node` o `group`).
 - **Utenti**: username, ruolo, password hash; JWT emessi al login.
 

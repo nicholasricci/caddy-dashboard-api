@@ -62,6 +62,8 @@ export function normalizePath(p: string): string {
 /**
  * Block high-impact mutation paths even for GET (defense in depth).
  * Read-only endpoints such as /api/v1/discovery/{id}/snapshots remain allowed.
+ * Node mutations (POST/PUT/DELETE /api/v1/nodes) are blocked by validateHttpRequest;
+ * this list only guards dangerous path shapes if policies change later.
  */
 export function isDenylistedPath(pathname: string): boolean {
   const lower = pathname.toLowerCase();
@@ -96,7 +98,9 @@ export function validateHttpRequest(method: string, pathname: string): void {
     );
   }
 
-  throw new Error(`Method ${m} is not allowed (only GET and POST login/refresh).`);
+  throw new Error(
+    `Method ${m} is not allowed (only GET under /api/v1/ or POST on auth login/refresh/logout and snapshots backfill).`,
+  );
 }
 
 export function resolveSwaggerPath(): string {

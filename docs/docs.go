@@ -583,7 +583,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Creates a Caddy node manually (private IP or instance ID)",
+                "description": "Creates a Caddy node (AWS SSM, SSH, HTTP admin, or inventory-only)",
                 "consumes": [
                     "application/json"
                 ],
@@ -601,7 +601,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/models.CaddyNode"
+                            "$ref": "#/definitions/handlers.createNodeRequest"
                         }
                     }
                 ],
@@ -614,6 +614,12 @@ const docTemplate = `{
                     },
                     "400": {
                         "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
                         "schema": {
                             "$ref": "#/definitions/models.ErrorResponse"
                         }
@@ -709,7 +715,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/models.CaddyNode"
+                            "$ref": "#/definitions/handlers.updateNodeRequest"
                         }
                     }
                 ],
@@ -728,6 +734,12 @@ const docTemplate = `{
                     },
                     "404": {
                         "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
                         "schema": {
                             "$ref": "#/definitions/models.ErrorResponse"
                         }
@@ -1578,6 +1590,41 @@ const docTemplate = `{
                 }
             }
         },
+        "handlers.createNodeRequest": {
+            "type": "object",
+            "required": [
+                "name"
+            ],
+            "properties": {
+                "instance_id": {
+                    "type": "string"
+                },
+                "last_seen_at": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "private_ip": {
+                    "type": "string"
+                },
+                "region": {
+                    "type": "string"
+                },
+                "ssm_enabled": {
+                    "type": "boolean"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "transport": {
+                    "type": "string"
+                },
+                "transport_config": {
+                    "type": "object"
+                }
+            }
+        },
         "handlers.createUserRequest": {
             "type": "object",
             "required": [
@@ -1630,6 +1677,38 @@ const docTemplate = `{
             "properties": {
                 "refresh_token": {
                     "type": "string"
+                }
+            }
+        },
+        "handlers.updateNodeRequest": {
+            "type": "object",
+            "properties": {
+                "instance_id": {
+                    "type": "string"
+                },
+                "last_seen_at": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "private_ip": {
+                    "type": "string"
+                },
+                "region": {
+                    "type": "string"
+                },
+                "ssm_enabled": {
+                    "type": "boolean"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "transport": {
+                    "type": "string"
+                },
+                "transport_config": {
+                    "type": "object"
                 }
             }
         },
@@ -1755,10 +1834,17 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "ssm_enabled": {
+                    "description": "Deprecated: use Transport == TransportAWSSSM instead; kept for API compatibility.",
                     "type": "boolean"
                 },
                 "status": {
                     "type": "string"
+                },
+                "transport": {
+                    "type": "string"
+                },
+                "transport_config": {
+                    "type": "object"
                 },
                 "updated_at": {
                     "type": "string"
@@ -1868,7 +1954,7 @@ var SwaggerInfo = &swag.Spec{
 	BasePath:         "/",
 	Schemes:          []string{"http", "https"},
 	Title:            "Caddy Dashboard API",
-	Description:      "API for managing Caddy nodes on AWS via SSM.",
+	Description:      "API for managing Caddy nodes: AWS SSM, SSH, or direct HTTP admin; discovery includes AWS, static IP, GCP labels, and Azure tags.",
 	InfoInstanceName: "swagger",
 	SwaggerTemplate:  docTemplate,
 }

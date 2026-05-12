@@ -97,7 +97,7 @@ func TestDiscoveryService_Run_Errors(t *testing.T) {
 	for _, tc := range tests {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
-			svc := NewDiscoveryService(tc.repo, nil, nil, nil)
+			svc := NewDiscoveryService(tc.repo, nil, DiscoveryDeps{})
 			_, err := svc.Run(context.Background(), uuid.New())
 			if !errors.Is(err, tc.wantErr) {
 				t.Fatalf("Run: got %v, want %v", err, tc.wantErr)
@@ -108,7 +108,7 @@ func TestDiscoveryService_Run_Errors(t *testing.T) {
 
 func TestDiscoveryService_Create_DefaultSnapshotScope(t *testing.T) {
 	repo := &fakeDiscoveryRepo{}
-	svc := NewDiscoveryService(repo, nil, nil, nil)
+	svc := NewDiscoveryService(repo, nil, DiscoveryDeps{})
 	cfg := &models.DiscoveryConfig{
 		ID:     uuid.New(),
 		Name:   "d1",
@@ -138,7 +138,7 @@ func TestDiscoveryService_Run_StaticIP_AssignsDiscoveryConfigID(t *testing.T) {
 		Parameters: params,
 	}
 	writer := &fakeDiscoveryNodeWriter{}
-	svc := NewDiscoveryService(&fakeDiscoveryRepo{cfg: cfg}, writer, nil, nil)
+	svc := NewDiscoveryService(&fakeDiscoveryRepo{cfg: cfg}, writer, DiscoveryDeps{})
 
 	n, err := svc.Run(context.Background(), cfgID)
 	if err != nil {
@@ -153,5 +153,8 @@ func TestDiscoveryService_Run_StaticIP_AssignsDiscoveryConfigID(t *testing.T) {
 	got := writer.upserted[0].DiscoveryConfigID
 	if got == nil || *got != cfgID {
 		t.Fatalf("DiscoveryConfigID=%v, want %s", got, cfgID)
+	}
+	if writer.upserted[0].Transport != models.TransportInventoryOnly {
+		t.Fatalf("Transport=%q, want inventory_only", writer.upserted[0].Transport)
 	}
 }

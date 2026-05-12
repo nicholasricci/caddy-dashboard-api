@@ -36,6 +36,9 @@ func (s *NodeService) ListPaginated(ctx context.Context, limit, offset int) ([]m
 }
 
 func (s *NodeService) Create(ctx context.Context, node *models.CaddyNode) error {
+	if err := ValidateCaddyNode(node); err != nil {
+		return err
+	}
 	if node.Status == "" {
 		node.Status = "manual"
 	}
@@ -58,6 +61,9 @@ func (s *NodeService) Get(ctx context.Context, id uuid.UUID) (*models.CaddyNode,
 }
 
 func (s *NodeService) Update(ctx context.Context, node *models.CaddyNode) error {
+	if err := ValidateCaddyNode(node); err != nil {
+		return err
+	}
 	return s.repo.Update(ctx, node)
 }
 

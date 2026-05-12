@@ -27,6 +27,9 @@ func NewSSMService(clients *MultiRegionClient) *SSMService {
 }
 
 func (s *SSMService) RunShellCommand(ctx context.Context, region, instanceID, command string) (*CommandResult, error) {
+	if s == nil || s.clients == nil {
+		return nil, fmt.Errorf("aws ssm client not configured")
+	}
 	client, err := s.clients.SSM(region)
 	if err != nil {
 		return nil, err
@@ -84,6 +87,9 @@ func (s *SSMService) RunShellCommand(ctx context.Context, region, instanceID, co
 
 // DiscoverManagedInstances lists instances registered with SSM in the given region (online + offline).
 func (s *SSMService) DiscoverManagedInstances(ctx context.Context, region string) ([]models.CaddyNode, error) {
+	if s == nil || s.clients == nil {
+		return nil, fmt.Errorf("aws ssm client not configured")
+	}
 	client, err := s.clients.SSM(region)
 	if err != nil {
 		return nil, err
@@ -117,7 +123,8 @@ func (s *SSMService) DiscoverManagedInstances(ctx context.Context, region string
 				Name:       name,
 				InstanceID: aws.String(id),
 				PrivateIP:  ipPtr,
-				Region:     region,
+				Region:     models.StringPtr(region),
+				Transport:  models.TransportAWSSSM,
 				SSMEnabled: true,
 				Status:     string(info.PingStatus),
 				LastSeenAt: &now,

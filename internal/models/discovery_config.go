@@ -11,10 +11,12 @@ import (
 )
 
 const (
-	DiscoveryMethodAWSTag   = "aws_tag"
-	DiscoveryMethodAWSCIDR  = "aws_cidr"
-	DiscoveryMethodAWSSSM   = "aws_ssm"
-	DiscoveryMethodStaticIP = "static_ip"
+	DiscoveryMethodAWSTag    = "aws_tag"
+	DiscoveryMethodAWSCIDR   = "aws_cidr"
+	DiscoveryMethodAWSSSM    = "aws_ssm"
+	DiscoveryMethodStaticIP  = "static_ip"
+	DiscoveryMethodGCPLabels = "gcp_labels"
+	DiscoveryMethodAzureTags = "azure_tags"
 )
 
 type SnapshotScope string
