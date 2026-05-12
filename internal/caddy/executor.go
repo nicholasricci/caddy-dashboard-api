@@ -54,10 +54,6 @@ type RemoteExecutor interface {
 	FetchConfig(ctx context.Context, t ExecTarget) (*ExecutionResult, error)
 }
 
-func executionFailed(stderr string) *ExecutionResult {
-	return &ExecutionResult{Status: ExecStatusFailed, Stderr: stderr}
-}
-
 func executionSuccess(stdout string, meta map[string]string) *ExecutionResult {
 	if meta == nil {
 		meta = map[string]string{}

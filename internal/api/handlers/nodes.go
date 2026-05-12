@@ -88,9 +88,17 @@ func (h *NodeHandler) Create(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "invalid request body"})
 		return
 	}
+	explicitTransport := strings.TrimSpace(req.Transport) != ""
 	tr := strings.TrimSpace(req.Transport)
 	if tr == "" {
 		tr = models.TransportAWSSSM
+	}
+	if req.SSMEnabled != nil && !explicitTransport {
+		if *req.SSMEnabled {
+			tr = models.TransportAWSSSM
+		} else {
+			tr = models.TransportInventoryOnly
+		}
 	}
 	node := &models.CaddyNode{
 		Name:       strings.TrimSpace(req.Name),
@@ -103,9 +111,6 @@ func (h *NodeHandler) Create(c *gin.Context) {
 	}
 	if len(req.TransportConfig) > 0 {
 		node.TransportConfig = append(json.RawMessage(nil), req.TransportConfig...)
-	}
-	if req.SSMEnabled != nil {
-		node.SSMEnabled = *req.SSMEnabled
 	}
 	if req.Status != nil {
 		node.Status = strings.TrimSpace(*req.Status)
@@ -228,8 +233,12 @@ func (h *NodeHandler) Update(c *gin.Context) {
 	if len(req.TransportConfig) > 0 {
 		node.TransportConfig = append(json.RawMessage(nil), req.TransportConfig...)
 	}
-	if req.SSMEnabled != nil {
-		node.SSMEnabled = *req.SSMEnabled
+	if req.SSMEnabled != nil && req.Transport == nil {
+		if *req.SSMEnabled {
+			node.Transport = models.TransportAWSSSM
+		} else {
+			node.Transport = models.TransportInventoryOnly
+		}
 	}
 	if req.Status != nil {
 		node.Status = strings.TrimSpace(*req.Status)

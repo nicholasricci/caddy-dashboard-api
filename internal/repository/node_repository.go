@@ -93,7 +93,7 @@ func (r *NodeRepository) UpsertByInstanceOrIP(ctx context.Context, node *models.
 func (r *NodeRepository) updateExistingNode(db *gorm.DB, existing, incoming *models.CaddyNode) error {
 	incoming.ID = existing.ID
 	updates := map[string]any{
-		"ssm_enabled": incoming.SSMEnabled,
+		"ssm_enabled": incoming.EffectiveTransport() == models.TransportAWSSSM,
 		"region":      incoming.Region,
 	}
 	if strings.TrimSpace(incoming.Name) != "" {
