@@ -84,6 +84,43 @@ func ValidateCaddyNode(n *models.CaddyNode) error {
 		}
 	case models.TransportInventoryOnly:
 		// no extra requirements
+	case models.TransportGCPOsConfig:
+		var cfg struct {
+			ProjectID      string `json:"project_id"`
+			Zone           string `json:"zone"`
+			InstanceName   string `json:"instance_name"`
+			LabelKey       string `json:"label_key"`
+			LabelValue     string `json:"label_value"`
+			TimeoutSeconds int    `json:"timeout_seconds"`
+		}
+		if len(n.TransportConfig) == 0 {
+			return fmt.Errorf("%w: gcp_osconfig requires transport_config", ErrInvalidNodePayload)
+		}
+		if err := json.Unmarshal(n.TransportConfig, &cfg); err != nil {
+			return fmt.Errorf("%w: transport_config must be valid JSON", ErrInvalidNodePayload)
+		}
+		if strings.TrimSpace(cfg.ProjectID) == "" || strings.TrimSpace(cfg.Zone) == "" || strings.TrimSpace(cfg.InstanceName) == "" {
+			return fmt.Errorf("%w: gcp_osconfig requires project_id, zone, instance_name", ErrInvalidNodePayload)
+		}
+		if strings.TrimSpace(cfg.LabelKey) == "" || strings.TrimSpace(cfg.LabelValue) == "" {
+			return fmt.Errorf("%w: gcp_osconfig requires label_key and label_value (VM labels; must uniquely identify the VM in the zone)", ErrInvalidNodePayload)
+		}
+	case models.TransportAzureRunCommand:
+		var cfg struct {
+			SubscriptionID string `json:"subscription_id"`
+			ResourceGroup  string `json:"resource_group"`
+			VMName         string `json:"vm_name"`
+			TimeoutSeconds int    `json:"timeout_seconds"`
+		}
+		if len(n.TransportConfig) == 0 {
+			return fmt.Errorf("%w: azure_run_command requires transport_config", ErrInvalidNodePayload)
+		}
+		if err := json.Unmarshal(n.TransportConfig, &cfg); err != nil {
+			return fmt.Errorf("%w: transport_config must be valid JSON", ErrInvalidNodePayload)
+		}
+		if strings.TrimSpace(cfg.SubscriptionID) == "" || strings.TrimSpace(cfg.ResourceGroup) == "" || strings.TrimSpace(cfg.VMName) == "" {
+			return fmt.Errorf("%w: azure_run_command requires subscription_id, resource_group, vm_name", ErrInvalidNodePayload)
+		}
 	default:
 		return fmt.Errorf("%w: unsupported transport %q", ErrInvalidNodePayload, tr)
 	}

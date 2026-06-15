@@ -15,6 +15,8 @@ type Config struct {
 	Server        ServerConfig        `mapstructure:"server"`
 	Auth          AuthConfig          `mapstructure:"auth"`
 	AWS           AWSConfig           `mapstructure:"aws"`
+	GCP           GCPConfig           `mapstructure:"gcp"`
+	Azure         AzureConfig         `mapstructure:"azure"`
 	Caddy         CaddyConfig         `mapstructure:"caddy"`
 	Database      DatabaseConfig      `mapstructure:"database"`
 	Discovery     DiscoveryConfig     `mapstructure:"discovery"`
@@ -49,6 +51,20 @@ type AWSConfig struct {
 	Profile  string   `mapstructure:"profile"`
 	Regions  []string `mapstructure:"regions"`
 	Optional bool     `mapstructure:"optional"`
+}
+
+// GCPConfig controls optional GCP OS Config execution (VM Manager) from the API process.
+type GCPConfig struct {
+	Enabled          bool          `mapstructure:"enabled"`
+	OSConfigTimeout  time.Duration `mapstructure:"osconfig_timeout"`
+	AssignmentPrefix string        `mapstructure:"assignment_prefix"`
+}
+
+// AzureConfig controls optional Azure VM Run Command execution.
+type AzureConfig struct {
+	Enabled           bool          `mapstructure:"enabled"`
+	RunCommandTimeout time.Duration `mapstructure:"run_command_timeout"`
+	RunCommandPoll    time.Duration `mapstructure:"run_command_poll"`
 }
 
 type CaddyConfig struct {
@@ -132,6 +148,22 @@ func Load() (*Config, error) {
 	v.BindEnv("aws.profile", "AWS_PROFILE")
 	v.BindEnv("aws.regions", "AWS_REGIONS")
 	v.BindEnv("aws.optional", "AWS_OPTIONAL")
+
+	// GCP (OS Config / VM Manager — optional)
+	v.SetDefault("gcp.enabled", true)
+	v.SetDefault("gcp.osconfig_timeout", "3m")
+	v.SetDefault("gcp.assignment_prefix", "caddy-dash")
+	_ = v.BindEnv("gcp.enabled", "GCP_ENABLED")
+	_ = v.BindEnv("gcp.osconfig_timeout", "GCP_OSCONFIG_TIMEOUT")
+	_ = v.BindEnv("gcp.assignment_prefix", "GCP_ASSIGNMENT_PREFIX")
+
+	// Azure (VM Run Command — optional)
+	v.SetDefault("azure.enabled", true)
+	v.SetDefault("azure.run_command_timeout", "3m")
+	v.SetDefault("azure.run_command_poll", "2s")
+	_ = v.BindEnv("azure.enabled", "AZURE_ENABLED")
+	_ = v.BindEnv("azure.run_command_timeout", "AZURE_RUN_COMMAND_TIMEOUT")
+	_ = v.BindEnv("azure.run_command_poll", "AZURE_RUN_COMMAND_POLL")
 
 	// Caddy
 	v.SetDefault("caddy.cache_ttl", "2m")

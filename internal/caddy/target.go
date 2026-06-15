@@ -123,6 +123,71 @@ func BuildExecTarget(node *models.CaddyNode) (ExecTarget, error) {
 			},
 		}, nil
 
+	case models.TransportGCPOsConfig:
+		raw := rawFromTransportConfig(node)
+		if len(raw) == 0 {
+			return ExecTarget{}, fmt.Errorf("%w: gcp_osconfig requires transport_config", ErrTransportNotConfigured)
+		}
+		var cfg struct {
+			ProjectID        string `json:"project_id"`
+			Zone             string `json:"zone"`
+			InstanceName     string `json:"instance_name"`
+			LabelKey         string `json:"label_key"`
+			LabelValue       string `json:"label_value"`
+			AssignmentPrefix string `json:"assignment_prefix"`
+			TimeoutSeconds   int    `json:"timeout_seconds"`
+		}
+		if err := json.Unmarshal(raw, &cfg); err != nil {
+			return ExecTarget{}, fmt.Errorf("%w: invalid transport_config json: %v", ErrTransportNotConfigured, err)
+		}
+		if strings.TrimSpace(cfg.ProjectID) == "" || strings.TrimSpace(cfg.Zone) == "" || strings.TrimSpace(cfg.InstanceName) == "" {
+			return ExecTarget{}, fmt.Errorf("%w: gcp_osconfig requires project_id, zone, instance_name", ErrTransportNotConfigured)
+		}
+		if strings.TrimSpace(cfg.LabelKey) == "" || strings.TrimSpace(cfg.LabelValue) == "" {
+			return ExecTarget{}, fmt.Errorf("%w: gcp_osconfig requires label_key and label_value (VM must carry these labels)", ErrTransportNotConfigured)
+		}
+		return ExecTarget{
+			Node:      node,
+			Transport: tr,
+			GCP: &GCPOsConfigParams{
+				ProjectID:        strings.TrimSpace(cfg.ProjectID),
+				Zone:             strings.TrimSpace(cfg.Zone),
+				InstanceName:     strings.TrimSpace(cfg.InstanceName),
+				LabelKey:         strings.TrimSpace(cfg.LabelKey),
+				LabelValue:       strings.TrimSpace(cfg.LabelValue),
+				AssignmentPrefix: strings.TrimSpace(cfg.AssignmentPrefix),
+				TimeoutSeconds:   cfg.TimeoutSeconds,
+			},
+		}, nil
+
+	case models.TransportAzureRunCommand:
+		raw := rawFromTransportConfig(node)
+		if len(raw) == 0 {
+			return ExecTarget{}, fmt.Errorf("%w: azure_run_command requires transport_config", ErrTransportNotConfigured)
+		}
+		var cfg struct {
+			SubscriptionID string `json:"subscription_id"`
+			ResourceGroup  string `json:"resource_group"`
+			VMName         string `json:"vm_name"`
+			TimeoutSeconds int    `json:"timeout_seconds"`
+		}
+		if err := json.Unmarshal(raw, &cfg); err != nil {
+			return ExecTarget{}, fmt.Errorf("%w: invalid transport_config json: %v", ErrTransportNotConfigured, err)
+		}
+		if strings.TrimSpace(cfg.SubscriptionID) == "" || strings.TrimSpace(cfg.ResourceGroup) == "" || strings.TrimSpace(cfg.VMName) == "" {
+			return ExecTarget{}, fmt.Errorf("%w: azure_run_command requires subscription_id, resource_group, vm_name", ErrTransportNotConfigured)
+		}
+		return ExecTarget{
+			Node:      node,
+			Transport: tr,
+			Azure: &AzureRunCommandParams{
+				SubscriptionID: strings.TrimSpace(cfg.SubscriptionID),
+				ResourceGroup:  strings.TrimSpace(cfg.ResourceGroup),
+				VMName:         strings.TrimSpace(cfg.VMName),
+				TimeoutSeconds: cfg.TimeoutSeconds,
+			},
+		}, nil
+
 	default:
 		return ExecTarget{}, fmt.Errorf("%w: %q", ErrUnknownTransport, tr)
 	}

@@ -27,6 +27,18 @@ aws:
     - eu-south-1
     - eu-central-1
 
+# Optional: native guest execution via GCP VM Manager / OS Config (ADC on the API host).
+gcp:
+  enabled: true
+  osconfig_timeout: 3m
+  assignment_prefix: caddy-dash
+
+# Optional: native guest execution via Azure VM Run Command (DefaultAzureCredential).
+azure:
+  enabled: true
+  run_command_timeout: 3m
+  run_command_poll: 2s
+
 caddy:
   cache_ttl: 2m
   ssh_timeout: 2m

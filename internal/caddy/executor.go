@@ -26,6 +26,8 @@ type ExecTarget struct {
 	Transport string
 	SSH       *SSHExecParams
 	HTTP      *HTTPAdminParams
+	GCP       *GCPOsConfigParams
+	Azure     *AzureRunCommandParams
 }
 
 // SSHExecParams is parsed from transport_config for transport "ssh".
@@ -45,6 +47,26 @@ type HTTPAdminParams struct {
 	TLSSkipVerify  bool
 	ClientCertRef  string
 	ClientKeyRef   string
+}
+
+// GCPOsConfigParams is parsed from transport_config for transport "gcp_osconfig".
+// OS policy assignments target VMs by label; label_key/label_value must match the VM.
+type GCPOsConfigParams struct {
+	ProjectID        string
+	Zone             string
+	InstanceName     string
+	LabelKey         string
+	LabelValue       string
+	AssignmentPrefix string
+	TimeoutSeconds   int
+}
+
+// AzureRunCommandParams is parsed from transport_config for transport "azure_run_command".
+type AzureRunCommandParams struct {
+	SubscriptionID string
+	ResourceGroup  string
+	VMName         string
+	TimeoutSeconds int
 }
 
 // RemoteExecutor applies Caddy admin operations on a remote node.

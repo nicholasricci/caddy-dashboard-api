@@ -85,7 +85,7 @@ func (h *DiscoveryHandler) Get(c *gin.Context) {
 
 // Create godoc
 // @Summary Create discovery config
-// @Description Creates a discovery rule (methods: aws_tag, aws_ssm, static_ip; aws_cidr not implemented)
+// @Description Creates a discovery rule (methods: aws_tag, aws_ssm, static_ip, gcp_labels, azure_tags; aws_cidr not implemented). For gcp_labels / azure_tags optional parameters JSON field `node_transport` may be `gcp_osconfig` or `azure_run_command` to register runnable nodes (default inventory_only).
 // @Tags discovery
 // @Accept json
 // @Produce json

@@ -4,18 +4,22 @@ import "strings"
 
 // Node transport / remote execution backends.
 const (
-	TransportAWSSSM        = "aws_ssm"
-	TransportSSH           = "ssh"
-	TransportHTTPAdmin     = "http_admin"
-	TransportInventoryOnly = "inventory_only"
+	TransportAWSSSM          = "aws_ssm"
+	TransportSSH             = "ssh"
+	TransportHTTPAdmin       = "http_admin"
+	TransportInventoryOnly   = "inventory_only"
+	TransportGCPOsConfig     = "gcp_osconfig"
+	TransportAzureRunCommand = "azure_run_command"
 )
 
 // ValidNodeTransports lists accepted API values for CaddyNode.Transport.
 var ValidNodeTransports = map[string]struct{}{
-	TransportAWSSSM:        {},
-	TransportSSH:           {},
-	TransportHTTPAdmin:     {},
-	TransportInventoryOnly: {},
+	TransportAWSSSM:          {},
+	TransportSSH:             {},
+	TransportHTTPAdmin:       {},
+	TransportInventoryOnly:   {},
+	TransportGCPOsConfig:     {},
+	TransportAzureRunCommand: {},
 }
 
 // EffectiveTransport returns the transport to use for execution, defaulting to AWS SSM for legacy rows.

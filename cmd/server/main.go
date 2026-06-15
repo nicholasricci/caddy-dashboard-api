@@ -32,7 +32,7 @@ import (
 
 // @title Caddy Dashboard API
 // @version 1.0
-// @description API for managing Caddy nodes: AWS SSM, SSH, or direct HTTP admin; discovery includes AWS, static IP, GCP labels, and Azure tags.
+// @description API for managing Caddy nodes: AWS SSM, SSH, HTTP admin, GCP OS Config, Azure Run Command, or inventory-only; discovery includes AWS, static IP, GCP labels, and Azure tags.
 // @BasePath /
 // @schemes http https
 // @securityDefinitions.apikey BearerAuth
@@ -123,10 +123,42 @@ func main() {
 	}
 	httpExec := caddysvc.NewHTTPAdminExecutor(secretResolver, cfg.Caddy.HTTPAdminTimeout, cfg.Caddy.HTTPMaxResponseBody)
 	sshExec := caddysvc.NewSSHExecutor(sshPool, secretResolver, cfg.Caddy.SSHTimeout, cfg.Caddy.SSHTimeout)
+
+	var gcpOsExec caddysvc.RemoteExecutor
+	if cfg.GCP.Enabled {
+		gcpRunner, err := gcpcloud.NewOSConfigShellRunner(ctx, cfg.GCP.OSConfigTimeout, cfg.GCP.AssignmentPrefix)
+		if err != nil {
+			log.Warn("gcp os config runner not available", zap.Error(err))
+			gcpOsExec = &caddysvc.ErrRemoteExecutor{Err: caddysvc.ErrTransportNotConfigured}
+		} else {
+			defer func() { _ = gcpRunner.Close() }()
+			gcpOsExec = caddysvc.NewGCPOsConfigExecutor(gcpRunner)
+		}
+	} else {
+		gcpOsExec = &caddysvc.ErrRemoteExecutor{Err: caddysvc.ErrTransportNotConfigured}
+	}
+
+	var azureExec caddysvc.RemoteExecutor
+	if cfg.Azure.Enabled {
+		azureRunner, err := azure.NewRunCommandRunner(ctx, true, cfg.Azure.RunCommandPoll)
+		if err != nil {
+			log.Warn("azure run command runner not available", zap.Error(err))
+			azureExec = &caddysvc.ErrRemoteExecutor{Err: caddysvc.ErrTransportNotConfigured}
+		} else if azureRunner == nil {
+			azureExec = &caddysvc.ErrRemoteExecutor{Err: caddysvc.ErrTransportNotConfigured}
+		} else {
+			azureExec = caddysvc.NewAzureRunCommandExecutor(azureRunner)
+		}
+	} else {
+		azureExec = &caddysvc.ErrRemoteExecutor{Err: caddysvc.ErrTransportNotConfigured}
+	}
+
 	dispatcher := caddysvc.NewDispatcher(map[string]caddysvc.RemoteExecutor{
-		models.TransportAWSSSM:    ssmExec,
-		models.TransportHTTPAdmin: httpExec,
-		models.TransportSSH:       sshExec,
+		models.TransportAWSSSM:          ssmExec,
+		models.TransportHTTPAdmin:       httpExec,
+		models.TransportSSH:             sshExec,
+		models.TransportGCPOsConfig:     gcpOsExec,
+		models.TransportAzureRunCommand: azureExec,
 	})
 	internalCaddySvc := caddysvc.NewService(
 		nodeRepo,

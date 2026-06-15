@@ -2,8 +2,6 @@ package caddy
 
 import (
 	"context"
-	"encoding/base64"
-	"fmt"
 
 	awssvc "github.com/nicholasricci/caddy-dashboard/internal/aws"
 	"github.com/nicholasricci/caddy-dashboard/internal/models"
@@ -46,11 +44,7 @@ func (e *SSMExecutor) ApplyConfig(ctx context.Context, t ExecTarget, payload []b
 	if region == "" || id == "" {
 		return nil, ErrTransportNotConfigured
 	}
-	encoded := base64.StdEncoding.EncodeToString(payload)
-	command := fmt.Sprintf(`base64 -d >/tmp/caddy_config.json <<'CADDY_CFG_B64_EOF'
-%s
-CADDY_CFG_B64_EOF
-curl -sS -X POST http://localhost:2019/load -H 'Content-Type: application/json' --data-binary @/tmp/caddy_config.json`, encoded)
+	command := caddyApplyConfigShell(payload)
 	cr, err := e.ssm.RunShellCommand(ctx, region, id, command)
 	if err != nil {
 		return nil, err
@@ -67,7 +61,7 @@ func (e *SSMExecutor) Reload(ctx context.Context, t ExecTarget) (*ExecutionResul
 	if region == "" || id == "" {
 		return nil, ErrTransportNotConfigured
 	}
-	command := "caddy reload --config /etc/caddy/Caddyfile"
+	command := caddyReloadShell()
 	cr, err := e.ssm.RunShellCommand(ctx, region, id, command)
 	if err != nil {
 		return nil, err
@@ -84,7 +78,7 @@ func (e *SSMExecutor) FetchConfig(ctx context.Context, t ExecTarget) (*Execution
 	if region == "" || id == "" {
 		return nil, ErrTransportNotConfigured
 	}
-	command := "curl -sS http://localhost:2019/config/"
+	command := caddyFetchConfigShell()
 	cr, err := e.ssm.RunShellCommand(ctx, region, id, command)
 	if err != nil {
 		return nil, err

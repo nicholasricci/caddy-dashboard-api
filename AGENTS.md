@@ -4,7 +4,7 @@ Documento di contesto per assistenti AI che lavorano su questo repository.
 
 ## Scopo del progetto
 
-**Caddy Dashboard** è un backend API in **Go** (framework **Gin**) per gestire nodi **Caddy** su **AWS**: registrazione manuale o discovery via EC2, operazioni su Caddy tramite **AWS Systems Manager (SSM) Run Command**, persistenza di nodi, regole di discovery, snapshot di configurazione e utenti in **MariaDB/MySQL** (driver GORM `mysql`), autenticazione **JWT** con ruoli `admin` e `user`.
+**Caddy Dashboard** è un backend API in **Go** (framework **Gin**) per gestire nodi **Caddy** su cloud (principalmente **AWS**, con estensioni **GCP** e **Azure**): registrazione manuale o discovery (EC2, SSM, IP statici, label GCP, tag Azure), operazioni su Caddy tramite **AWS SSM Run Command**, **GCP VM Manager / OS Config**, **Azure VM Run Command**, oltre a **SSH** e **admin HTTP** diretto, persistenza di nodi, regole di discovery, snapshot di configurazione e utenti in **MariaDB/MySQL** (driver GORM `mysql`), autenticazione **JWT** con ruoli `admin` e `user`.
 
 Modulo Go: `github.com/nicholasricci/caddy-dashboard` · Go **1.26**.
 
@@ -16,6 +16,7 @@ Modulo Go: `github.com/nicholasricci/caddy-dashboard` · Go **1.26**.
 | Auth | JWT (`github.com/golang-jwt/jwt/v5`), bcrypt per password utente |
 | Database | GORM + `gorm.io/driver/mysql` (DSN TCP MariaDB/MySQL) |
 | AWS | AWS SDK v2: EC2, SSM, Secrets Manager (config supporta ARN segreti in YAML) |
+| GCP / Azure | OS Config (guest policy) e Azure Run Command per esecuzione remota opzionale; credenziali via ADC / DefaultAzureCredential |
 | Config | Viper (`configs/config.yaml`) + variabili d’ambiente; `godotenv` carica `.env` in locale |
 | Log | Zap (`go.uber.org/zap`) |
 | API docs | Swaggo: annotazioni su handler, generazione in `docs/`; UI su `/swagger/index.html`, JSON su `/swagger/doc.json` |
@@ -24,15 +25,15 @@ Modulo Go: `github.com/nicholasricci/caddy-dashboard` · Go **1.26**.
 ## Layout del repository
 
 ```
-cmd/server/          # Entrypoint HTTP, wiring di config, DB, AWS, handler, router
-configs/             # config.yaml (server, auth, aws, database, observability)
+cmd/server/          # Entrypoint HTTP, wiring di config, DB, AWS, GCP/Azure, handler, router
+configs/             # config.yaml (server, auth, aws, gcp, azure, database, observability)
 docs/                # Swagger generato (swagger.json, swagger.yaml, docs.go) — non editare a mano
 internal/api/handlers/   # Handler Gin per auth, health, nodes, discovery, caddy, users
 internal/api/middleware/ # Auth JWT, RequireAdmin, CORS, request logger
 internal/api/routes/     # Registrazione route e gruppi protected/admin
 internal/auth/       # Servizio JWT e validazione utenti
 internal/aws/        # Client multi-regione, EC2, SSM, Secrets
-internal/caddy/      # Esecuzione comandi Caddy via SSM, snapshot
+internal/caddy/      # Esecuzione comandi Caddy via dispatcher (SSM, SSH, HTTP admin, GCP OS Config, Azure Run Command), snapshot
 internal/config/     # Load configurazione (Viper + env)
 internal/database/   # Connessione GORM, AutoMigrate
 internal/models/     # Entità GORM (CaddyNode, DiscoveryConfig, CaddySnapshot, User, …)
@@ -45,7 +46,7 @@ tools/mcp-server/    # Server MCP Node/TS per Cursor (dev only)
 ## Configurazione
 
 - File principale: [`configs/config.yaml`](configs/config.yaml) (porta, `gin_mode`, CORS, TTL JWT, regioni AWS, cache Caddy, DSN DB, log level).
-- Variabili d’ambiente: vedi [`.env.example`](.env.example). Rilevanti: `SERVER_PORT`, `DB_*`, `AWS_PROFILE`, `AWS_REGIONS`, **`AWS_OPTIONAL`** (consente avvio senza regioni AWS), `CADDY_*` (cache, timeout SSH/HTTP admin, ecc.), `JWT_SECRET` (**obbligatorio**), `LOG_LEVEL`, `GIN_MODE`.
+- Variabili d’ambiente: vedi [`.env.example`](.env.example). Rilevanti: `SERVER_PORT`, `DB_*`, `AWS_PROFILE`, `AWS_REGIONS`, **`AWS_OPTIONAL`** (consente avvio senza regioni AWS), **`GCP_ENABLED`**, **`GCP_OSCONFIG_TIMEOUT`**, **`AZURE_ENABLED`**, **`AZURE_RUN_COMMAND_TIMEOUT`**, `CADDY_*` (cache, timeout SSH/HTTP admin, ecc.), `JWT_SECRET` (**obbligatorio**), `LOG_LEVEL`, `GIN_MODE`.
 - Opzione sviluppo Loki/Grafana Cloud: con `docker compose --profile loki` e servizio Alloy (`docker/loki/alloy-config.alloy`) i log stdout JSON dell’API vengono spediti a Loki usando `LOKI_URL`, `LOKI_USER`, `LOKI_API_KEY`, `LOKI_TENANT_ID`, `LOKI_ENVIRONMENT`.
 - Viper usa prefisso `APP_` con sostituzione `.` → `_` per override (es. variabili annidate).
 - CORS: con `cors_allowed_origins` vuoto si usa `*` senza credentials; per una SPA su altra origine impostare esplicitamente (es. `http://localhost:4200`) in YAML.
@@ -72,12 +73,12 @@ Endpoint principali (dettaglio in [`internal/api/routes/routes.go`](internal/api
 
 ## Dominio funzionale
 
-- **Nodo (`CaddyNode`)**: istanza/registrazione con IP privato, instance ID (opzionale per `aws_ssm`), `region` (obbligatoria per SSM), campo **`transport`** (`aws_ssm`, `ssh`, `http_admin`, `inventory_only`) e **`transport_config`** (JSON: es. `base_url` per HTTP admin, `user`/`private_key_ref`/`known_hosts_ref` per SSH). `ssm_enabled` è deprecato (derivato da `transport`). Operazioni Caddy usano un dispatcher (SSM / SSH / HTTP).
+- **Nodo (`CaddyNode`)**: istanza/registrazione con IP privato, instance ID (opzionale a seconda del transport), `region` (obbligatoria per `aws_ssm`), campo **`transport`** (`aws_ssm`, `ssh`, `http_admin`, `gcp_osconfig`, `azure_run_command`, `inventory_only`) e **`transport_config`** (JSON: es. `base_url` per HTTP admin, `user`/`private_key_ref` per SSH, `project_id`/`zone`/`instance_name`/`label_key`/`label_value` per GCP OS Config, `subscription_id`/`resource_group`/`vm_name` per Azure). `ssm_enabled` è deprecato (derivato da `transport`). Operazioni Caddy usano un dispatcher.
 - **Discovery (`DiscoveryConfig`)**: regole per trovare nodi (`aws_tag`, `aws_ssm`, `static_ip`, `gcp_labels`, `azure_tags`; `aws_cidr` non implementato). Metodi GCP/Azure richiedono credenziali cloud (ADC / DefaultAzureCredential) e `parameters` JSON documentati in Swagger.
 - **Snapshot**: versioni di configurazione Caddy persistite dopo sync/apply, con scope configurabile per `DiscoveryConfig` (`node` o `group`).
 - **Utenti**: username, ruolo, password hash; JWT emessi al login.
 
-Operazioni Caddy lato macchina remota avvengono tramite **SSM** (non SSH diretto dall’API). Le letture live e i metadati derivati (`@id`, upstream) sono cache-ati in memoria per nodo con TTL configurabile (`caddy.cache_ttl` / `CADDY_CACHE_TTL`) e invalidazione su mutazioni (`apply`, `sync`, `reload`).
+Operazioni Caddy lato macchina remota avvengono tramite il **dispatcher** (SSM, SSH, HTTP admin, GCP OS Config, Azure Run Command) a seconda del `transport` del nodo. Le letture live e i metadati derivati (`@id`, upstream) sono cache-ati in memoria per nodo con TTL configurabile (`caddy.cache_ttl` / `CADDY_CACHE_TTL`) e invalidazione su mutazioni (`apply`, `sync`, `reload`).
 
 ## Comandi utili
 

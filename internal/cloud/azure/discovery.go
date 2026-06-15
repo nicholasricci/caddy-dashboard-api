@@ -24,6 +24,7 @@ type azureParams struct {
 	ResourceGroup  string `json:"resource_group"`
 	TagName        string `json:"tag_name"`
 	TagValue       string `json:"tag_value"`
+	NodeTransport  string `json:"node_transport"` // optional: "inventory_only" (default) or "azure_run_command"
 }
 
 // Discover implements services.CloudDiscoverer for method azure_tags.
@@ -69,14 +70,32 @@ func (r *Runner) Discover(ctx context.Context, cfg *models.DiscoveryConfig) ([]m
 			if vm.Properties != nil && vm.Properties.ProvisioningState != nil {
 				status = *vm.Properties.ProvisioningState
 			}
-			out = append(out, models.CaddyNode{
+			tr := models.TransportInventoryOnly
+			var tc json.RawMessage
+			if strings.EqualFold(strings.TrimSpace(p.NodeTransport), models.TransportAzureRunCommand) {
+				tr = models.TransportAzureRunCommand
+				b, err := json.Marshal(map[string]string{
+					"subscription_id": p.SubscriptionID,
+					"resource_group":  p.ResourceGroup,
+					"vm_name":         name,
+				})
+				if err != nil {
+					return nil, fmt.Errorf("transport_config: %w", err)
+				}
+				tc = append(json.RawMessage(nil), b...)
+			}
+			node := models.CaddyNode{
 				Name:       name,
 				InstanceID: models.StringPtr(id),
 				Region:     models.StringPtr(p.ResourceGroup),
-				Transport:  models.TransportInventoryOnly,
+				Transport:  tr,
 				SSMEnabled: false,
 				Status:     status,
-			})
+			}
+			if len(tc) > 0 {
+				node.TransportConfig = tc
+			}
+			out = append(out, node)
 		}
 	}
 	return out, nil

@@ -26,7 +26,7 @@ server.registerTool(
   "get_openapi",
   {
     description:
-      "Load the Caddy Dashboard Swagger 2.0 spec (includes multi-transport nodes: aws_ssm, ssh, http_admin, inventory_only; discovery methods aws_tag, aws_ssm, static_ip, gcp_labels, azure_tags). Use source=http when the Go API is running, or file to read docs/swagger.json from the repo (CADDY_DASHBOARD_ROOT or cwd).",
+      "Load the Caddy Dashboard Swagger 2.0 spec (includes multi-transport nodes: aws_ssm, ssh, http_admin, gcp_osconfig, azure_run_command, inventory_only; discovery methods aws_tag, aws_ssm, static_ip, gcp_labels, azure_tags). Use source=http when the Go API is running, or file to read docs/swagger.json from the repo (CADDY_DASHBOARD_ROOT or cwd).",
     inputSchema: {
       source: z
         .enum(["http", "file"])
@@ -99,7 +99,7 @@ server.registerTool(
   "api_request",
   {
     description:
-      "Safe HTTP call to the dev API: GET under /api/v1/ only, or POST only for /api/v1/auth/login, /api/v1/auth/refresh, /api/v1/auth/logout, and /api/v1/snapshots/backfill. Read-only use cases: list/get nodes (see transport, transport_config, region in JSON), discovery configs, snapshots, live Caddy config under /api/v1/nodes/{id}/config/live/ids. Host must be localhost/127.0.0.1 unless MCP_ALLOW_NON_LOCALHOST=1. Optional Bearer from CADDY_API_TOKEN. Blocked paths: node apply/reload/sync, POST/PUT/DELETE on nodes (not in allowlist), discovery run.",
+      "Safe HTTP call to the dev API: GET under /api/v1/ only, or POST only for /api/v1/auth/login, /api/v1/auth/refresh, /api/v1/auth/logout, and /api/v1/snapshots/backfill. Read-only use cases: list/get nodes (see transport: aws_ssm, ssh, http_admin, gcp_osconfig, azure_run_command, inventory_only; transport_config; region), discovery configs, snapshots, live Caddy config under /api/v1/nodes/{id}/config/live/ids. Host must be localhost/127.0.0.1 unless MCP_ALLOW_NON_LOCALHOST=1. Optional Bearer from CADDY_API_TOKEN. Blocked paths: node apply/reload/sync, POST/PUT/DELETE on nodes (not in allowlist), discovery run.",
     inputSchema: {
       method: z.enum(["GET", "POST"]).describe("Only GET or POST (POST limited to auth login/refresh/logout and snapshots backfill)."),
       path: z

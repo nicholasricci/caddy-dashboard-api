@@ -244,7 +244,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Creates a discovery rule (methods: aws_tag, aws_ssm, static_ip; aws_cidr not implemented)",
+                "description": "Creates a discovery rule (methods: aws_tag, aws_ssm, static_ip, gcp_labels, azure_tags; aws_cidr not implemented). For gcp_labels / azure_tags optional parameters JSON field ` + "`" + `node_transport` + "`" + ` may be ` + "`" + `gcp_osconfig` + "`" + ` or ` + "`" + `azure_run_command` + "`" + ` to register runnable nodes (default inventory_only).",
                 "consumes": [
                     "application/json"
                 ],
@@ -583,7 +583,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Creates a Caddy node (AWS SSM, SSH, HTTP admin, or inventory-only)",
+                "description": "Creates a Caddy node (transports: aws_ssm, ssh, http_admin, gcp_osconfig, azure_run_command, inventory_only; see transport_config for provider fields)",
                 "consumes": [
                     "application/json"
                 ],
@@ -1954,7 +1954,7 @@ var SwaggerInfo = &swag.Spec{
 	BasePath:         "/",
 	Schemes:          []string{"http", "https"},
 	Title:            "Caddy Dashboard API",
-	Description:      "API for managing Caddy nodes: AWS SSM, SSH, or direct HTTP admin; discovery includes AWS, static IP, GCP labels, and Azure tags.",
+	Description:      "API for managing Caddy nodes: AWS SSM, SSH, HTTP admin, GCP OS Config, Azure Run Command, or inventory-only; discovery includes AWS, static IP, GCP labels, and Azure tags.",
 	InfoInstanceName: "swagger",
 	SwaggerTemplate:  docTemplate,
 }

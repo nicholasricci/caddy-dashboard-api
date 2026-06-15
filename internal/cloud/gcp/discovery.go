@@ -20,10 +20,11 @@ func NewRunner() *Runner {
 }
 
 type gcpParams struct {
-	ProjectID  string `json:"project_id"`
-	Zone       string `json:"zone"`
-	LabelKey   string `json:"label_key"`
-	LabelValue string `json:"label_value"`
+	ProjectID     string `json:"project_id"`
+	Zone          string `json:"zone"`
+	LabelKey      string `json:"label_key"`
+	LabelValue    string `json:"label_value"`
+	NodeTransport string `json:"node_transport"` // optional: "inventory_only" (default) or "gcp_osconfig"
 }
 
 // Discover implements services.CloudDiscoverer for method gcp_labels.
@@ -66,15 +67,35 @@ func (r *Runner) Discover(ctx context.Context, cfg *models.DiscoveryConfig) ([]m
 			if status == "" {
 				status = "unknown"
 			}
-			out = append(out, models.CaddyNode{
+			tr := models.TransportInventoryOnly
+			var tc json.RawMessage
+			if strings.EqualFold(strings.TrimSpace(p.NodeTransport), models.TransportGCPOsConfig) {
+				tr = models.TransportGCPOsConfig
+				b, err := json.Marshal(map[string]string{
+					"project_id":    p.ProjectID,
+					"zone":          p.Zone,
+					"instance_name": inst.Name,
+					"label_key":     p.LabelKey,
+					"label_value":   p.LabelValue,
+				})
+				if err != nil {
+					return fmt.Errorf("transport_config: %w", err)
+				}
+				tc = append(json.RawMessage(nil), b...)
+			}
+			node := models.CaddyNode{
 				Name:       inst.Name,
 				InstanceID: models.StringPtr(id),
 				PrivateIP:  ipPtr,
 				Region:     models.StringPtr(p.Zone),
-				Transport:  models.TransportInventoryOnly,
+				Transport:  tr,
 				SSMEnabled: false,
 				Status:     status,
-			})
+			}
+			if len(tc) > 0 {
+				node.TransportConfig = tc
+			}
+			out = append(out, node)
 		}
 		return nil
 	})

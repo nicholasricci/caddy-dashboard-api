@@ -2,7 +2,7 @@
 
 Local MCP server for Cursor: read the Swagger spec and run **safe** HTTP calls against the Go API (`GET /api/v1/*` and `POST` only on `/api/v1/auth/login`, `/api/v1/auth/refresh`, `/api/v1/auth/logout`, `/api/v1/snapshots/backfill`). This includes read-only Caddy live-inspection endpoints such as `/api/v1/nodes/{id}/config/live/ids`. Node create/update/delete and Caddy mutations (apply/reload/sync, discovery run) stay **out of scope** for `api_request` by design. It does not start unless `CADDY_MCP_DEV=1`.
 
-The API models **CaddyNode** with `transport` (`aws_ssm`, `ssh`, `http_admin`, `inventory_only`), optional `transport_config` (JSON), and nullable `region` (required at runtime for SSM). Discovery supports `gcp_labels` and `azure_tags` among other methods; the MCP tools only reflect whatever is in the loaded Swagger (`docs/swagger.json` or live `/swagger/doc.json`). If you run the API without AWS regions, set `AWS_OPTIONAL=1` (or equivalent config) on the **API** process — the MCP server does not talk to AWS directly.
+The API models **CaddyNode** with `transport` (`aws_ssm`, `ssh`, `http_admin`, `gcp_osconfig`, `azure_run_command`, `inventory_only`), optional `transport_config` (JSON), and nullable `region` (required at runtime for `aws_ssm`). Discovery supports `gcp_labels` and `azure_tags` among other methods; optional discovery parameter `node_transport` can register `gcp_osconfig` / `azure_run_command` nodes. The MCP tools only reflect whatever is in the loaded Swagger (`docs/swagger.json` or live `/swagger/doc.json`). If you run the API without AWS regions, set `AWS_OPTIONAL=1` (or equivalent config) on the **API** process — the MCP server does not talk to AWS directly.
 
 ## Build
 

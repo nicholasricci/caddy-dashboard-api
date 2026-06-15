@@ -71,7 +71,7 @@ func (h *NodeHandler) List(c *gin.Context) {
 
 // Create godoc
 // @Summary Create node
-// @Description Creates a Caddy node (AWS SSM, SSH, HTTP admin, or inventory-only)
+// @Description Creates a Caddy node (transports: aws_ssm, ssh, http_admin, gcp_osconfig, azure_run_command, inventory_only; see transport_config for provider fields)
 // @Tags nodes
 // @Accept json
 // @Produce json
