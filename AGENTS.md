@@ -110,6 +110,7 @@ Sotto [`tools/mcp-server/`](tools/mcp-server/) c’è un server **MCP** per inte
 - `JWT_SECRET` deve essere robusto in produzione.
 - Credenziali AWS tramite profile, variabili d’ambiente o ruolo IAM a seconda dell’ambiente.
 - Le azioni admin (apply/reload/sync, run discovery) hanno **impatto reale** su AWS e sui nodi: trattare staging/prod con attenzione.
+- **Dipendenze e vulnerabilità:** [`.github/dependabot.yml`](.github/dependabot.yml) monitora `go.mod` e GitHub Actions in modalità solo-sicurezza (`open-pull-requests-limit: 0` evita bump schedulati non critici). Abilitare una tantum su GitHub → **Settings → Code security and analysis**: **Dependabot alerts** e **Dependabot security updates** (le PR automatiche su CVE richiedono entrambi). La CI in [`.github/workflows/ci.yml`](.github/workflows/ci.yml) esegue anche `govulncheck` come controllo complementare su ogni push/PR.
 
 ## Frontend
 

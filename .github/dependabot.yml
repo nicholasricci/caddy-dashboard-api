@@ -1,0 +1,26 @@
+# Security-only updates: open-pull-requests-limit: 0 disables scheduled version bumps.
+# PRs are opened when Dependabot security updates are enabled in repo settings
+# (Settings → Code security and analysis → Dependabot alerts + security updates).
+version: 2
+updates:
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 0
+    labels:
+      - dependencies
+      - security
+    commit-message:
+      prefix: deps(security)
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 0
+    labels:
+      - dependencies
+      - security
+    commit-message:
+      prefix: deps(security)
