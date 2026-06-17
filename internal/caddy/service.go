@@ -52,10 +52,10 @@ type MutateDomainsRequest struct {
 }
 
 type MutateDomainsResponse struct {
-	Results []DomainMutationResult  `json:"results"`
-	Changed bool                    `json:"changed"`
-	DryRun  bool                    `json:"dry_run"`
-	Diff    DomainMutationDiff      `json:"diff"`
+	Results []DomainMutationResult     `json:"results"`
+	Changed bool                       `json:"changed"`
+	DryRun  bool                       `json:"dry_run"`
+	Diff    DomainMutationDiff         `json:"diff"`
 	Preview map[string]json.RawMessage `json:"preview,omitempty"`
 }
 
@@ -65,10 +65,10 @@ type MutateUpstreamsRequest struct {
 }
 
 type MutateUpstreamsResponse struct {
-	Results []UpstreamMutationResult `json:"results"`
-	Changed bool                     `json:"changed"`
-	DryRun  bool                     `json:"dry_run"`
-	Diff    UpstreamMutationDiff     `json:"diff"`
+	Results []UpstreamMutationResult   `json:"results"`
+	Changed bool                       `json:"changed"`
+	DryRun  bool                       `json:"dry_run"`
+	Diff    UpstreamMutationDiff       `json:"diff"`
 	Preview map[string]json.RawMessage `json:"preview,omitempty"`
 }
 

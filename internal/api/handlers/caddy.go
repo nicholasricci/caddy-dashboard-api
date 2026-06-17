@@ -541,11 +541,11 @@ func (h *CaddyHandler) MutateUpstreams(c *gin.Context) {
 			timeout = 500
 		}
 		targets = append(targets, caddysvc.UpstreamMutationTarget{
-			ConfigID:        strings.TrimSpace(t.ConfigID),
-			AddDial:         strings.TrimSpace(t.AddDial),
-			RemoveDial:      strings.TrimSpace(t.RemoveDial),
-			PruneUnhealthy:  t.PruneUnhealthy,
-			ProbeTimeout:    time.Duration(timeout) * time.Millisecond,
+			ConfigID:       strings.TrimSpace(t.ConfigID),
+			AddDial:        strings.TrimSpace(t.AddDial),
+			RemoveDial:     strings.TrimSpace(t.RemoveDial),
+			PruneUnhealthy: t.PruneUnhealthy,
+			ProbeTimeout:   time.Duration(timeout) * time.Millisecond,
 		})
 	}
 	resp, err := h.svc.MutateUpstreams(c.Request.Context(), nodeID, caddysvc.MutateUpstreamsRequest{

@@ -16,9 +16,9 @@ var (
 )
 
 type DomainMutationTarget struct {
-	ConfigID     string
-	MatchIndexes []int
-	AddDomains   []string
+	ConfigID      string
+	MatchIndexes  []int
+	AddDomains    []string
 	RemoveDomains []string
 }
 
@@ -36,11 +36,11 @@ type DomainMutationResult struct {
 }
 
 type UpstreamMutationTarget struct {
-	ConfigID      string
-	AddDial       string
-	RemoveDial    string
+	ConfigID       string
+	AddDial        string
+	RemoveDial     string
 	PruneUnhealthy bool
-	ProbeTimeout  time.Duration
+	ProbeTimeout   time.Duration
 }
 
 type UpstreamMutationResult struct {

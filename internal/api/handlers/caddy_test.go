@@ -17,14 +17,14 @@ import (
 )
 
 type fakeCaddyService struct {
-	listIDs       []models.CaddyConfigIDInfo
-	listIDsErr    error
-	configByID    json.RawMessage
-	configByIDErr error
-	upstreams     []json.RawMessage
-	upstreamsErr  error
-	hosts         []string
-	hostsErr      error
+	listIDs             []models.CaddyConfigIDInfo
+	listIDsErr          error
+	configByID          json.RawMessage
+	configByIDErr       error
+	upstreams           []json.RawMessage
+	upstreamsErr        error
+	hosts               []string
+	hostsErr            error
 	mutateDomainsResp   *caddysvc.MutateDomainsResponse
 	mutateDomainsErr    error
 	mutateUpstreamsResp *caddysvc.MutateUpstreamsResponse
