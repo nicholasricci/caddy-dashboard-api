@@ -1139,6 +1139,198 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v1/nodes/{id}/config/mutate/domains": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Adds/removes host domains on one or more config fragments by @id and optional match indexes, then applies updated config",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "caddy"
+                ],
+                "summary": "Mutate domains by config @id",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Node ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Domain mutation request",
+                        "name": "payload",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handlers.mutateDomainsRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.MutateDomainsResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/nodes/{id}/config/mutate/upstreams": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Adds/removes/prunes upstream dials on one or more config fragments by @id, then applies updated config",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "caddy"
+                ],
+                "summary": "Mutate upstream dials by config @id",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Node ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Upstream mutation request",
+                        "name": "payload",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handlers.mutateUpstreamsRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.MutateUpstreamsResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/nodes/{id}/config/propagate": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Fetches live config from source node and applies it to peer nodes in the same discovery config",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "caddy"
+                ],
+                "summary": "Propagate source node config to discovery peers",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Source Node ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.PropagateConfigResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/nodes/{id}/reload": {
             "post": {
                 "security": [
@@ -1643,6 +1835,46 @@ const docTemplate = `{
                 }
             }
         },
+        "handlers.dnsChallengeRequest": {
+            "type": "object",
+            "properties": {
+                "api_token": {
+                    "type": "string"
+                },
+                "provider": {
+                    "type": "string"
+                }
+            }
+        },
+        "handlers.domainMutationTargetRequest": {
+            "type": "object",
+            "required": [
+                "config_id"
+            ],
+            "properties": {
+                "add_domains": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "config_id": {
+                    "type": "string"
+                },
+                "match_indexes": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "remove_domains": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
         "handlers.loginRequest": {
             "type": "object",
             "required": [
@@ -1666,6 +1898,46 @@ const docTemplate = `{
             "properties": {
                 "refresh_token": {
                     "type": "string"
+                }
+            }
+        },
+        "handlers.mutateDomainsRequest": {
+            "type": "object",
+            "required": [
+                "targets"
+            ],
+            "properties": {
+                "dns_challenge": {
+                    "$ref": "#/definitions/handlers.dnsChallengeRequest"
+                },
+                "dry_run": {
+                    "type": "boolean"
+                },
+                "targets": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/handlers.domainMutationTargetRequest"
+                    }
+                },
+                "update_tls_policies": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "handlers.mutateUpstreamsRequest": {
+            "type": "object",
+            "required": [
+                "targets"
+            ],
+            "properties": {
+                "dry_run": {
+                    "type": "boolean"
+                },
+                "targets": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/handlers.upstreamMutationTargetRequest"
+                    }
                 }
             }
         },
@@ -1722,6 +1994,29 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "username": {
+                    "type": "string"
+                }
+            }
+        },
+        "handlers.upstreamMutationTargetRequest": {
+            "type": "object",
+            "required": [
+                "config_id"
+            ],
+            "properties": {
+                "add_dial": {
+                    "type": "string"
+                },
+                "config_id": {
+                    "type": "string"
+                },
+                "probe_timeout_ms": {
+                    "type": "integer"
+                },
+                "prune_unhealthy": {
+                    "type": "boolean"
+                },
+                "remove_dial": {
                     "type": "string"
                 }
             }
@@ -1898,10 +2193,124 @@ const docTemplate = `{
                 }
             }
         },
+        "models.DomainMutationDiff": {
+            "type": "object",
+            "properties": {
+                "added": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "removed": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "models.DomainMutationResult": {
+            "type": "object",
+            "properties": {
+                "added": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "changed": {
+                    "type": "boolean"
+                },
+                "config_id": {
+                    "type": "string"
+                },
+                "hosts": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "removed": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
         "models.ErrorResponse": {
             "type": "object",
             "properties": {
                 "error": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.MutateDomainsResponse": {
+            "type": "object",
+            "properties": {
+                "changed": {
+                    "type": "boolean"
+                },
+                "diff": {
+                    "$ref": "#/definitions/models.DomainMutationDiff"
+                },
+                "dry_run": {
+                    "type": "boolean"
+                },
+                "preview": {
+                    "type": "object",
+                    "additionalProperties": {}
+                },
+                "results": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.DomainMutationResult"
+                    }
+                }
+            }
+        },
+        "models.MutateUpstreamsResponse": {
+            "type": "object",
+            "properties": {
+                "changed": {
+                    "type": "boolean"
+                },
+                "diff": {
+                    "$ref": "#/definitions/models.UpstreamMutationDiff"
+                },
+                "dry_run": {
+                    "type": "boolean"
+                },
+                "preview": {
+                    "type": "object",
+                    "additionalProperties": {}
+                },
+                "results": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.UpstreamMutationResult"
+                    }
+                }
+            }
+        },
+        "models.PropagateConfigResponse": {
+            "type": "object",
+            "properties": {
+                "applied_to": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "skipped": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "source_node_id": {
                     "type": "string"
                 }
             }
@@ -1916,6 +2325,64 @@ const docTemplate = `{
                 "SnapshotScopeNode",
                 "SnapshotScopeGroup"
             ]
+        },
+        "models.UpstreamMutationDiff": {
+            "type": "object",
+            "properties": {
+                "added": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "pruned": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "removed": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "models.UpstreamMutationResult": {
+            "type": "object",
+            "properties": {
+                "added": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "changed": {
+                    "type": "boolean"
+                },
+                "config_id": {
+                    "type": "string"
+                },
+                "pruned": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "removed": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "upstreams": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
         },
         "models.User": {
             "type": "object",

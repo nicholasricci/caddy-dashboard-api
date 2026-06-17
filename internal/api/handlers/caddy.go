@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -30,6 +31,9 @@ type caddyService interface {
 	GetHostsByID(ctx context.Context, nodeID uuid.UUID, configID string) ([]string, error)
 	Apply(ctx context.Context, nodeID uuid.UUID, payload json.RawMessage, requestedBy string) error
 	Reload(ctx context.Context, nodeID uuid.UUID) error
+	MutateDomains(ctx context.Context, nodeID uuid.UUID, req caddysvc.MutateDomainsRequest, requestedBy string) (*caddysvc.MutateDomainsResponse, error)
+	MutateUpstreams(ctx context.Context, nodeID uuid.UUID, req caddysvc.MutateUpstreamsRequest, requestedBy string) (*caddysvc.MutateUpstreamsResponse, error)
+	PropagateToDiscoveryPeers(ctx context.Context, sourceNodeID uuid.UUID, requestedBy string) (*caddysvc.PropagateResponse, error)
 	ListSnapshotsPaginated(ctx context.Context, nodeID uuid.UUID, limit, offset int) ([]models.CaddySnapshot, int64, error)
 }
 
@@ -71,6 +75,38 @@ func respondCaddyNodeError(c *gin.Context, err error) bool {
 
 type applyConfigRequest struct {
 	Config json.RawMessage `json:"config" binding:"required" swaggertype:"object"`
+}
+
+type domainMutationTargetRequest struct {
+	ConfigID      string   `json:"config_id" binding:"required"`
+	MatchIndexes  []int    `json:"match_indexes"`
+	AddDomains    []string `json:"add_domains"`
+	RemoveDomains []string `json:"remove_domains"`
+}
+
+type dnsChallengeRequest struct {
+	Provider string `json:"provider"`
+	APIToken string `json:"api_token"`
+}
+
+type mutateDomainsRequest struct {
+	Targets           []domainMutationTargetRequest `json:"targets" binding:"required"`
+	UpdateTLSPolicies bool                          `json:"update_tls_policies"`
+	DNSChallenge      *dnsChallengeRequest          `json:"dns_challenge,omitempty"`
+	DryRun            bool                          `json:"dry_run"`
+}
+
+type upstreamMutationTargetRequest struct {
+	ConfigID       string `json:"config_id" binding:"required"`
+	AddDial        string `json:"add_dial"`
+	RemoveDial     string `json:"remove_dial"`
+	PruneUnhealthy bool   `json:"prune_unhealthy"`
+	ProbeTimeoutMs int    `json:"probe_timeout_ms"`
+}
+
+type mutateUpstreamsRequest struct {
+	Targets []upstreamMutationTargetRequest `json:"targets" binding:"required"`
+	DryRun  bool                            `json:"dry_run"`
 }
 
 // Sync godoc
@@ -381,6 +417,242 @@ func (h *CaddyHandler) Reload(c *gin.Context) {
 	}
 	logAuditFailure(h.logger, c, "reload", "node", nodeID.String(), h.audit.Record(c.Request.Context(), c.GetString("username"), "reload", "node", nodeID.String(), nil))
 	c.JSON(http.StatusOK, gin.H{"message": "caddy reloaded"})
+}
+
+// MutateDomains godoc
+// @Summary Mutate domains by config @id
+// @Description Adds/removes host domains on one or more config fragments by @id and optional match indexes, then applies updated config
+// @Tags caddy
+// @Accept json
+// @Produce json
+// @Param id path string true "Node ID"
+// @Param payload body mutateDomainsRequest true "Domain mutation request"
+// @Success 200 {object} models.MutateDomainsResponse
+// @Failure 400 {object} models.ErrorResponse
+// @Failure 404 {object} models.ErrorResponse
+// @Failure 422 {object} models.ErrorResponse
+// @Failure 500 {object} models.ErrorResponse
+// @Security BearerAuth
+// @Router /api/v1/nodes/{id}/config/mutate/domains [post]
+func (h *CaddyHandler) MutateDomains(c *gin.Context) {
+	nodeID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "invalid node id"})
+		return
+	}
+	var req mutateDomainsRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "invalid request body"})
+		return
+	}
+	targets := make([]caddysvc.DomainMutationTarget, 0, len(req.Targets))
+	for _, t := range req.Targets {
+		targets = append(targets, caddysvc.DomainMutationTarget{
+			ConfigID:      strings.TrimSpace(t.ConfigID),
+			MatchIndexes:  t.MatchIndexes,
+			AddDomains:    t.AddDomains,
+			RemoveDomains: t.RemoveDomains,
+		})
+	}
+	var challenge *caddysvc.TLSDNSChallenge
+	if req.DNSChallenge != nil {
+		challenge = &caddysvc.TLSDNSChallenge{
+			Provider: strings.TrimSpace(req.DNSChallenge.Provider),
+			APIToken: strings.TrimSpace(req.DNSChallenge.APIToken),
+		}
+	}
+	resp, err := h.svc.MutateDomains(c.Request.Context(), nodeID, caddysvc.MutateDomainsRequest{
+		Targets:           targets,
+		UpdateTLSPolicies: req.UpdateTLSPolicies,
+		TLSDNSChallenge:   challenge,
+		DryRun:            req.DryRun,
+	}, c.GetString("username"))
+	if err != nil {
+		if respondCaddyNodeError(c, err) {
+			return
+		}
+		if errors.Is(err, caddysvc.ErrConfigIDNotFound) {
+			c.JSON(http.StatusNotFound, models.ErrorResponse{Error: "config id not found"})
+			return
+		}
+		if errors.Is(err, caddysvc.ErrInvalidMutationPayload) || errors.Is(err, caddysvc.ErrConfigIDShapeMismatch) {
+			c.JSON(http.StatusUnprocessableEntity, models.ErrorResponse{Error: err.Error()})
+			return
+		}
+		logRequestError(h.logger, c, "caddy mutate domains failed", err, zap.String("node_id", nodeID.String()))
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "domain mutation failed"})
+		return
+	}
+	if h.audit != nil {
+		logAuditFailure(h.logger, c, "mutate_domains", "node", nodeID.String(), h.audit.Record(c.Request.Context(), c.GetString("username"), "mutate_domains", "node", nodeID.String(), gin.H{"targets": len(req.Targets)}))
+	}
+	modelResp := models.MutateDomainsResponse{
+		Results: make([]models.DomainMutationResult, 0, len(resp.Results)),
+		Changed: resp.Changed,
+		DryRun:  resp.DryRun,
+		Diff: models.DomainMutationDiff{
+			Added:   resp.Diff.Added,
+			Removed: resp.Diff.Removed,
+		},
+		Preview: rawPreviewToAny(resp.Preview),
+	}
+	for _, item := range resp.Results {
+		modelResp.Results = append(modelResp.Results, models.DomainMutationResult{
+			ConfigID: item.ConfigID,
+			Hosts:    item.Hosts,
+			Changed:  item.Changed,
+			Added:    item.Added,
+			Removed:  item.Removed,
+		})
+	}
+	c.JSON(http.StatusOK, modelResp)
+}
+
+// MutateUpstreams godoc
+// @Summary Mutate upstream dials by config @id
+// @Description Adds/removes/prunes upstream dials on one or more config fragments by @id, then applies updated config
+// @Tags caddy
+// @Accept json
+// @Produce json
+// @Param id path string true "Node ID"
+// @Param payload body mutateUpstreamsRequest true "Upstream mutation request"
+// @Success 200 {object} models.MutateUpstreamsResponse
+// @Failure 400 {object} models.ErrorResponse
+// @Failure 404 {object} models.ErrorResponse
+// @Failure 422 {object} models.ErrorResponse
+// @Failure 500 {object} models.ErrorResponse
+// @Security BearerAuth
+// @Router /api/v1/nodes/{id}/config/mutate/upstreams [post]
+func (h *CaddyHandler) MutateUpstreams(c *gin.Context) {
+	nodeID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "invalid node id"})
+		return
+	}
+	var req mutateUpstreamsRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "invalid request body"})
+		return
+	}
+	targets := make([]caddysvc.UpstreamMutationTarget, 0, len(req.Targets))
+	for _, t := range req.Targets {
+		timeout := t.ProbeTimeoutMs
+		if timeout <= 0 {
+			timeout = 500
+		}
+		targets = append(targets, caddysvc.UpstreamMutationTarget{
+			ConfigID:        strings.TrimSpace(t.ConfigID),
+			AddDial:         strings.TrimSpace(t.AddDial),
+			RemoveDial:      strings.TrimSpace(t.RemoveDial),
+			PruneUnhealthy:  t.PruneUnhealthy,
+			ProbeTimeout:    time.Duration(timeout) * time.Millisecond,
+		})
+	}
+	resp, err := h.svc.MutateUpstreams(c.Request.Context(), nodeID, caddysvc.MutateUpstreamsRequest{
+		Targets: targets,
+		DryRun:  req.DryRun,
+	}, c.GetString("username"))
+	if err != nil {
+		if respondCaddyNodeError(c, err) {
+			return
+		}
+		if errors.Is(err, caddysvc.ErrConfigIDNotFound) {
+			c.JSON(http.StatusNotFound, models.ErrorResponse{Error: "config id not found"})
+			return
+		}
+		if errors.Is(err, caddysvc.ErrInvalidMutationPayload) || errors.Is(err, caddysvc.ErrConfigIDShapeMismatch) {
+			c.JSON(http.StatusUnprocessableEntity, models.ErrorResponse{Error: err.Error()})
+			return
+		}
+		logRequestError(h.logger, c, "caddy mutate upstreams failed", err, zap.String("node_id", nodeID.String()))
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "upstream mutation failed"})
+		return
+	}
+	if h.audit != nil {
+		logAuditFailure(h.logger, c, "mutate_upstreams", "node", nodeID.String(), h.audit.Record(c.Request.Context(), c.GetString("username"), "mutate_upstreams", "node", nodeID.String(), gin.H{"targets": len(req.Targets)}))
+	}
+	modelResp := models.MutateUpstreamsResponse{
+		Results: make([]models.UpstreamMutationResult, 0, len(resp.Results)),
+		Changed: resp.Changed,
+		DryRun:  resp.DryRun,
+		Diff: models.UpstreamMutationDiff{
+			Added:   resp.Diff.Added,
+			Removed: resp.Diff.Removed,
+			Pruned:  resp.Diff.Pruned,
+		},
+		Preview: rawPreviewToAny(resp.Preview),
+	}
+	for _, item := range resp.Results {
+		modelResp.Results = append(modelResp.Results, models.UpstreamMutationResult{
+			ConfigID:  item.ConfigID,
+			Upstreams: item.Upstreams,
+			Pruned:    item.Pruned,
+			Changed:   item.Changed,
+			Added:     item.Added,
+			Removed:   item.Removed,
+		})
+	}
+	c.JSON(http.StatusOK, modelResp)
+}
+
+func rawPreviewToAny(in map[string]json.RawMessage) map[string]any {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make(map[string]any, len(in))
+	for key, raw := range in {
+		var decoded any
+		if err := json.Unmarshal(raw, &decoded); err == nil {
+			out[key] = decoded
+			continue
+		}
+		out[key] = string(raw)
+	}
+	return out
+}
+
+// PropagateConfig godoc
+// @Summary Propagate source node config to discovery peers
+// @Description Fetches live config from source node and applies it to peer nodes in the same discovery config
+// @Tags caddy
+// @Produce json
+// @Param id path string true "Source Node ID"
+// @Success 200 {object} models.PropagateConfigResponse
+// @Failure 400 {object} models.ErrorResponse
+// @Failure 404 {object} models.ErrorResponse
+// @Failure 500 {object} models.ErrorResponse
+// @Security BearerAuth
+// @Router /api/v1/nodes/{id}/config/propagate [post]
+func (h *CaddyHandler) PropagateConfig(c *gin.Context) {
+	nodeID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "invalid node id"})
+		return
+	}
+	resp, err := h.svc.PropagateToDiscoveryPeers(c.Request.Context(), nodeID, c.GetString("username"))
+	if err != nil {
+		if respondCaddyNodeError(c, err) {
+			return
+		}
+		logRequestError(h.logger, c, "caddy propagate failed", err, zap.String("node_id", nodeID.String()))
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "propagate failed"})
+		return
+	}
+	if h.audit != nil {
+		logAuditFailure(h.logger, c, "propagate", "node", nodeID.String(), h.audit.Record(c.Request.Context(), c.GetString("username"), "propagate", "node", nodeID.String(), gin.H{"applied_to": len(resp.AppliedTo), "skipped": len(resp.Skipped)}))
+	}
+	modelResp := models.PropagateConfigResponse{
+		SourceNodeID: resp.SourceNodeID.String(),
+		AppliedTo:    make([]string, 0, len(resp.AppliedTo)),
+		Skipped:      make([]string, 0, len(resp.Skipped)),
+	}
+	for _, id := range resp.AppliedTo {
+		modelResp.AppliedTo = append(modelResp.AppliedTo, id.String())
+	}
+	for _, id := range resp.Skipped {
+		modelResp.Skipped = append(modelResp.Skipped, id.String())
+	}
+	c.JSON(http.StatusOK, modelResp)
 }
 
 // ListSnapshots godoc

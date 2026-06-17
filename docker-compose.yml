@@ -15,56 +15,56 @@ services:
       retries: 15
       start_period: 15s
 
-  api:
-    build:
-      context: .
-      dockerfile: docker/dev/Dockerfile
-    working_dir: /app
-    volumes:
-      - .:/app
-      - go-mod-cache:/go/pkg/mod
-      - go-build-cache:/root/.cache/go-build
-    ports:
-      - "${SERVER_PORT:-8080}:8080"
-    environment:
-      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env or environment}
-      APP_SERVER_PORT: "8080"
-      DB_HOST: mariadb
-      DB_PORT: "3306"
-      DB_NAME: ${MARIADB_DATABASE:-caddy_dashboard}
-      DB_USER: ${MARIADB_USER:-caddy}
-      DB_PASSWORD: ${MARIADB_PASSWORD:-caddy}
-      DB_PARAMS: ${DB_PARAMS:-charset=utf8mb4&parseTime=True&loc=Local}
-      LOG_LEVEL: ${LOG_LEVEL:-debug}
-      GIN_MODE: ${GIN_MODE:-debug}
-      AWS_REGIONS: ${AWS_REGIONS:-eu-south-1}
-    depends_on:
-      mariadb:
-        condition: service_healthy
+  # api:
+  #   build:
+  #     context: .
+  #     dockerfile: docker/dev/Dockerfile
+  #   working_dir: /app
+  #   volumes:
+  #     - .:/app
+  #     - go-mod-cache:/go/pkg/mod
+  #     - go-build-cache:/root/.cache/go-build
+  #   ports:
+  #     - "${SERVER_PORT:-8080}:8080"
+  #   environment:
+  #     JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env or environment}
+  #     APP_SERVER_PORT: "8080"
+  #     DB_HOST: mariadb
+  #     DB_PORT: "3306"
+  #     DB_NAME: ${MARIADB_DATABASE:-caddy_dashboard}
+  #     DB_USER: ${MARIADB_USER:-caddy}
+  #     DB_PASSWORD: ${MARIADB_PASSWORD:-caddy}
+  #     DB_PARAMS: ${DB_PARAMS:-charset=utf8mb4&parseTime=True&loc=Local}
+  #     LOG_LEVEL: ${LOG_LEVEL:-debug}
+  #     GIN_MODE: ${GIN_MODE:-debug}
+  #     AWS_REGIONS: ${AWS_REGIONS:-eu-south-1}
+  #   depends_on:
+  #     mariadb:
+  #       condition: service_healthy
 
-  alloy:
-    image: grafana/alloy:v1.8.3
-    profiles: ["loki"]
-    command:
-      - run
-      - /etc/alloy/config.alloy
-      - --storage.path=/var/lib/alloy/data
-      - --server.http.listen-addr=0.0.0.0:12345
-    environment:
-      LOKI_ENABLED: ${LOKI_ENABLED:-false}
-      LOKI_URL: ${LOKI_URL:-}
-      LOKI_USER: ${LOKI_USER:-}
-      LOKI_API_KEY: ${LOKI_API_KEY:-}
-      LOKI_TENANT_ID: ${LOKI_TENANT_ID:-}
-      LOKI_ENVIRONMENT: ${LOKI_ENVIRONMENT:-local}
-      COMPOSE_PROJECT_NAME: ${COMPOSE_PROJECT_NAME:-caddy-dashboard-api}
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-      - ./docker/loki/alloy-config.alloy:/etc/alloy/config.alloy:ro
-      - alloy-data:/var/lib/alloy/data
-    ports:
-      - "${ALLOY_UI_PORT:-12345}:12345"
-    restart: unless-stopped
+  # alloy:
+  #   image: grafana/alloy:v1.8.3
+  #   profiles: ["loki"]
+  #   command:
+  #     - run
+  #     - /etc/alloy/config.alloy
+  #     - --storage.path=/var/lib/alloy/data
+  #     - --server.http.listen-addr=0.0.0.0:12345
+  #   environment:
+  #     LOKI_ENABLED: ${LOKI_ENABLED:-false}
+  #     LOKI_URL: ${LOKI_URL:-}
+  #     LOKI_USER: ${LOKI_USER:-}
+  #     LOKI_API_KEY: ${LOKI_API_KEY:-}
+  #     LOKI_TENANT_ID: ${LOKI_TENANT_ID:-}
+  #     LOKI_ENVIRONMENT: ${LOKI_ENVIRONMENT:-local}
+  #     COMPOSE_PROJECT_NAME: ${COMPOSE_PROJECT_NAME:-caddy-dashboard-api}
+  #   volumes:
+  #     - /var/run/docker.sock:/var/run/docker.sock:ro
+  #     - ./docker/loki/alloy-config.alloy:/etc/alloy/config.alloy:ro
+  #     - alloy-data:/var/lib/alloy/data
+  #   ports:
+  #     - "${ALLOY_UI_PORT:-12345}:12345"
+  #   restart: unless-stopped
 
 volumes:
   go-mod-cache:

@@ -63,6 +63,18 @@ func (s *CaddyService) Reload(ctx context.Context, nodeID uuid.UUID) error {
 	return s.caddySvc.Reload(ctx, nodeID)
 }
 
+func (s *CaddyService) MutateDomains(ctx context.Context, nodeID uuid.UUID, req caddysvc.MutateDomainsRequest, requestedBy string) (*caddysvc.MutateDomainsResponse, error) {
+	return s.caddySvc.MutateDomains(ctx, nodeID, req, requestedBy)
+}
+
+func (s *CaddyService) MutateUpstreams(ctx context.Context, nodeID uuid.UUID, req caddysvc.MutateUpstreamsRequest, requestedBy string) (*caddysvc.MutateUpstreamsResponse, error) {
+	return s.caddySvc.MutateUpstreams(ctx, nodeID, req, requestedBy)
+}
+
+func (s *CaddyService) PropagateToDiscoveryPeers(ctx context.Context, sourceNodeID uuid.UUID, requestedBy string) (*caddysvc.PropagateResponse, error) {
+	return s.caddySvc.PropagateToDiscoveryPeers(ctx, sourceNodeID, requestedBy)
+}
+
 func (s *CaddyService) ListSnapshots(ctx context.Context, nodeID uuid.UUID) ([]models.CaddySnapshot, error) {
 	node, err := s.nodes.GetByID(ctx, nodeID)
 	if err != nil {

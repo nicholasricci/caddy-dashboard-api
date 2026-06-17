@@ -13,8 +13,9 @@ import (
 )
 
 type fakeNodeLoader struct {
-	node *models.CaddyNode
-	err  error
+	node  *models.CaddyNode
+	nodes []models.CaddyNode
+	err   error
 }
 
 func (f *fakeNodeLoader) GetByID(_ context.Context, _ uuid.UUID) (*models.CaddyNode, error) {
@@ -22,6 +23,16 @@ func (f *fakeNodeLoader) GetByID(_ context.Context, _ uuid.UUID) (*models.CaddyN
 		return nil, f.err
 	}
 	return f.node, nil
+}
+
+func (f *fakeNodeLoader) ListByDiscoveryConfigID(_ context.Context, _ uuid.UUID) ([]models.CaddyNode, error) {
+	if f.nodes != nil {
+		return f.nodes, nil
+	}
+	if f.node == nil {
+		return []models.CaddyNode{}, nil
+	}
+	return []models.CaddyNode{*f.node}, nil
 }
 
 type fakeDiscoveryLoader struct {
@@ -50,9 +61,11 @@ type fakeExecutor struct {
 	fetchResult ExecutionResult
 	fetchErr    error
 	fetchCalls  int
+	applyCalls  int
 }
 
 func (f *fakeExecutor) ApplyConfig(_ context.Context, _ ExecTarget, _ []byte) (*ExecutionResult, error) {
+	f.applyCalls++
 	return &ExecutionResult{Status: ExecStatusSuccess}, nil
 }
 
@@ -335,5 +348,142 @@ func TestService_GetHostsByID(t *testing.T) {
 	}
 	if hosts[0] != "alt.gruppogaspari.it" || hosts[1] != "flower.gruppogaspari.it" {
 		t.Fatalf("GetHostsByID: unexpected hosts order/content: %v", hosts)
+	}
+}
+
+func TestService_MutateDomains_NoChanges(t *testing.T) {
+	instanceID := "i-domains"
+	nodeID := uuid.New()
+	exec := &fakeExecutor{
+		fetchResult: ExecutionResult{
+			Status: ExecStatusSuccess,
+			Stdout: `{"apps":{"http":{"servers":{"srv0":{"routes":[{"@id":"route-a","match":[{"host":["a.example.com"]}]}]}}}}}`,
+		},
+	}
+	svc := NewService(
+		&fakeNodeLoader{node: &models.CaddyNode{ID: nodeID, Region: models.StringPtr("eu-west-1"), InstanceID: &instanceID}},
+		&fakeDiscoveryLoader{},
+		&fakeSnapshotWriter{},
+		exec,
+		WithCacheTTL(time.Minute),
+	)
+	resp, err := svc.MutateDomains(context.Background(), nodeID, MutateDomainsRequest{
+		Targets: []DomainMutationTarget{{ConfigID: "route-a", AddDomains: []string{"a.example.com"}}},
+	}, "tester")
+	if err != nil {
+		t.Fatalf("MutateDomains: %v", err)
+	}
+	if resp.Changed {
+		t.Fatalf("expected unchanged response: %+v", resp)
+	}
+	if exec.applyCalls != 0 {
+		t.Fatalf("applyCalls=%d, want 0", exec.applyCalls)
+	}
+}
+
+func TestService_MutateDomains_DryRun_NoApply(t *testing.T) {
+	instanceID := "i-domains-dry"
+	nodeID := uuid.New()
+	writer := &fakeSnapshotWriter{}
+	exec := &fakeExecutor{
+		fetchResult: ExecutionResult{
+			Status: ExecStatusSuccess,
+			Stdout: `{"apps":{"http":{"servers":{"srv0":{"routes":[{"@id":"route-a","match":[{"host":["a.example.com"]}]}]}}}}}`,
+		},
+	}
+	svc := NewService(
+		&fakeNodeLoader{node: &models.CaddyNode{ID: nodeID, Region: models.StringPtr("eu-west-1"), InstanceID: &instanceID}},
+		&fakeDiscoveryLoader{},
+		writer,
+		exec,
+		WithCacheTTL(time.Minute),
+	)
+	resp, err := svc.MutateDomains(context.Background(), nodeID, MutateDomainsRequest{
+		Targets: []DomainMutationTarget{{ConfigID: "route-a", AddDomains: []string{"b.example.com"}}},
+		DryRun:  true,
+	}, "tester")
+	if err != nil {
+		t.Fatalf("MutateDomains: %v", err)
+	}
+	if !resp.DryRun || !resp.Changed {
+		t.Fatalf("unexpected dry-run response: %+v", resp)
+	}
+	if exec.applyCalls != 0 {
+		t.Fatalf("applyCalls=%d, want 0", exec.applyCalls)
+	}
+	if writer.last != nil {
+		t.Fatalf("snapshot should not be stored in dry-run")
+	}
+	if len(resp.Preview) == 0 {
+		t.Fatalf("expected preview in dry-run response")
+	}
+}
+
+func TestService_MutateUpstreams_DryRun_NoApply(t *testing.T) {
+	instanceID := "i-upstreams-dry"
+	nodeID := uuid.New()
+	writer := &fakeSnapshotWriter{}
+	exec := &fakeExecutor{
+		fetchResult: ExecutionResult{
+			Status: ExecStatusSuccess,
+			Stdout: `{"apps":{"http":{"servers":{"srv0":{"routes":[{"@id":"route-a","handle":[{"handler":"reverse_proxy","upstreams":[{"dial":"10.0.0.1:80"}]}]}]}}}}}`,
+		},
+	}
+	svc := NewService(
+		&fakeNodeLoader{node: &models.CaddyNode{ID: nodeID, Region: models.StringPtr("eu-west-1"), InstanceID: &instanceID}},
+		&fakeDiscoveryLoader{},
+		writer,
+		exec,
+		WithCacheTTL(time.Minute),
+	)
+	resp, err := svc.MutateUpstreams(context.Background(), nodeID, MutateUpstreamsRequest{
+		Targets: []UpstreamMutationTarget{{ConfigID: "route-a", AddDial: "10.0.0.2:80"}},
+		DryRun:  true,
+	}, "tester")
+	if err != nil {
+		t.Fatalf("MutateUpstreams: %v", err)
+	}
+	if !resp.DryRun || !resp.Changed {
+		t.Fatalf("unexpected dry-run response: %+v", resp)
+	}
+	if exec.applyCalls != 0 {
+		t.Fatalf("applyCalls=%d, want 0", exec.applyCalls)
+	}
+	if writer.last != nil {
+		t.Fatalf("snapshot should not be stored in dry-run")
+	}
+	if len(resp.Preview) == 0 {
+		t.Fatalf("expected preview in dry-run response")
+	}
+}
+
+func TestService_PropagateToDiscoveryPeers(t *testing.T) {
+	instanceID := "i-source"
+	sourceID := uuid.New()
+	peerID := uuid.New()
+	discoveryID := uuid.New()
+	exec := &fakeExecutor{
+		fetchResult: ExecutionResult{
+			Status: ExecStatusSuccess,
+			Stdout: `{"apps":{"http":{"servers":{"srv0":{"routes":[{"@id":"route-a"}]}}}}}`,
+		},
+	}
+	nodes := []models.CaddyNode{
+		{ID: sourceID, Region: models.StringPtr("eu-west-1"), InstanceID: &instanceID, DiscoveryConfigID: &discoveryID},
+		{ID: peerID, Region: models.StringPtr("eu-west-1"), InstanceID: models.StringPtr("i-peer"), DiscoveryConfigID: &discoveryID},
+	}
+	svc := NewService(
+		&fakeNodeLoader{node: &nodes[0], nodes: nodes},
+		&fakeDiscoveryLoader{cfg: &models.DiscoveryConfig{ID: discoveryID, SnapshotScope: models.SnapshotScopeNode}},
+		&fakeSnapshotWriter{},
+		exec,
+		WithCacheTTL(time.Minute),
+	)
+	resp, err := svc.PropagateToDiscoveryPeers(context.Background(), sourceID, "tester")
+	if err != nil {
+		t.Fatalf("PropagateToDiscoveryPeers: %v", err)
+	}
+	if len(resp.AppliedTo) != 1 || resp.AppliedTo[0] != peerID {
+		t.Fatalf("applied_to=%v", resp.AppliedTo)
 	}
 }

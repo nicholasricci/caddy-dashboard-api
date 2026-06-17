@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -24,6 +25,12 @@ type fakeCaddyService struct {
 	upstreamsErr  error
 	hosts         []string
 	hostsErr      error
+	mutateDomainsResp   *caddysvc.MutateDomainsResponse
+	mutateDomainsErr    error
+	mutateUpstreamsResp *caddysvc.MutateUpstreamsResponse
+	mutateUpstreamsErr  error
+	propagateResp       *caddysvc.PropagateResponse
+	propagateErr        error
 }
 
 func (f *fakeCaddyService) Sync(context.Context, uuid.UUID, string) error { return nil }
@@ -53,6 +60,18 @@ func (f *fakeCaddyService) Apply(context.Context, uuid.UUID, json.RawMessage, st
 }
 
 func (f *fakeCaddyService) Reload(context.Context, uuid.UUID) error { return nil }
+
+func (f *fakeCaddyService) MutateDomains(context.Context, uuid.UUID, caddysvc.MutateDomainsRequest, string) (*caddysvc.MutateDomainsResponse, error) {
+	return f.mutateDomainsResp, f.mutateDomainsErr
+}
+
+func (f *fakeCaddyService) MutateUpstreams(context.Context, uuid.UUID, caddysvc.MutateUpstreamsRequest, string) (*caddysvc.MutateUpstreamsResponse, error) {
+	return f.mutateUpstreamsResp, f.mutateUpstreamsErr
+}
+
+func (f *fakeCaddyService) PropagateToDiscoveryPeers(context.Context, uuid.UUID, string) (*caddysvc.PropagateResponse, error) {
+	return f.propagateResp, f.propagateErr
+}
 
 func (f *fakeCaddyService) ListSnapshotsPaginated(context.Context, uuid.UUID, int, int) ([]models.CaddySnapshot, int64, error) {
 	return nil, 0, nil
@@ -127,6 +146,44 @@ func TestCaddyHandler_HostsByID_OK(t *testing.T) {
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
 
+	if w.Code != http.StatusOK {
+		t.Fatalf("status=%d, want %d body=%s", w.Code, http.StatusOK, w.Body.String())
+	}
+}
+
+func TestCaddyHandler_MutateDomains_OK(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	nodeID := uuid.New()
+	handler := NewCaddyHandler(&fakeCaddyService{
+		mutateDomainsResp: &caddysvc.MutateDomainsResponse{Changed: true, DryRun: true},
+	}, nil, zap.NewNop())
+
+	r := gin.New()
+	r.POST("/nodes/:id/config/mutate/domains", handler.MutateDomains)
+	req := httptest.NewRequest(http.MethodPost, "/nodes/"+nodeID.String()+"/config/mutate/domains", strings.NewReader(`{"targets":[{"config_id":"route-a","add_domains":["a.example.com"]}],"dry_run":true}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status=%d, want %d body=%s", w.Code, http.StatusOK, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), `"dry_run":true`) {
+		t.Fatalf("expected dry_run in response body=%s", w.Body.String())
+	}
+}
+
+func TestCaddyHandler_Propagate_OK(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	nodeID := uuid.New()
+	handler := NewCaddyHandler(&fakeCaddyService{
+		propagateResp: &caddysvc.PropagateResponse{SourceNodeID: nodeID},
+	}, nil, zap.NewNop())
+
+	r := gin.New()
+	r.POST("/nodes/:id/config/propagate", handler.PropagateConfig)
+	req := httptest.NewRequest(http.MethodPost, "/nodes/"+nodeID.String()+"/config/propagate", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
 		t.Fatalf("status=%d, want %d body=%s", w.Code, http.StatusOK, w.Body.String())
 	}

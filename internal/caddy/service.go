@@ -22,6 +22,7 @@ var ErrConfigIDNotFound = errors.New("config @id not found")
 // nodeLoader is satisfied by *repository.NodeRepository; narrowed for tests.
 type nodeLoader interface {
 	GetByID(ctx context.Context, id uuid.UUID) (*models.CaddyNode, error)
+	ListByDiscoveryConfigID(ctx context.Context, discoveryConfigID uuid.UUID) ([]models.CaddyNode, error)
 }
 
 type discoveryLoader interface {
@@ -41,6 +42,40 @@ type Service struct {
 	cacheTTL    time.Duration
 	locksMu     sync.Mutex
 	locks       map[uuid.UUID]*sync.Mutex
+}
+
+type MutateDomainsRequest struct {
+	Targets           []DomainMutationTarget
+	TLSDNSChallenge   *TLSDNSChallenge
+	UpdateTLSPolicies bool
+	DryRun            bool
+}
+
+type MutateDomainsResponse struct {
+	Results []DomainMutationResult  `json:"results"`
+	Changed bool                    `json:"changed"`
+	DryRun  bool                    `json:"dry_run"`
+	Diff    DomainMutationDiff      `json:"diff"`
+	Preview map[string]json.RawMessage `json:"preview,omitempty"`
+}
+
+type MutateUpstreamsRequest struct {
+	Targets []UpstreamMutationTarget
+	DryRun  bool
+}
+
+type MutateUpstreamsResponse struct {
+	Results []UpstreamMutationResult `json:"results"`
+	Changed bool                     `json:"changed"`
+	DryRun  bool                     `json:"dry_run"`
+	Diff    UpstreamMutationDiff     `json:"diff"`
+	Preview map[string]json.RawMessage `json:"preview,omitempty"`
+}
+
+type PropagateResponse struct {
+	SourceNodeID uuid.UUID   `json:"source_node_id"`
+	AppliedTo    []uuid.UUID `json:"applied_to"`
+	Skipped      []uuid.UUID `json:"skipped"`
 }
 
 func NewService(nodes nodeLoader, discoveries discoveryLoader, snapshots snapshotWriter, executor RemoteExecutor, opts ...Option) *Service {
@@ -245,6 +280,158 @@ func (s *Service) Reload(ctx context.Context, nodeID uuid.UUID) error {
 	}
 	s.cache.Invalidate(nodeID)
 	return nil
+}
+
+func (s *Service) MutateDomains(ctx context.Context, nodeID uuid.UUID, req MutateDomainsRequest, requestedBy string) (*MutateDomainsResponse, error) {
+	if len(req.Targets) == 0 {
+		return nil, fmt.Errorf("%w: targets are required", ErrInvalidMutationPayload)
+	}
+	raw, err := s.GetLiveConfig(ctx, nodeID)
+	if err != nil {
+		return nil, err
+	}
+	parsed, err := configToMap(raw)
+	if err != nil {
+		return nil, err
+	}
+	out := &MutateDomainsResponse{
+		Results: make([]DomainMutationResult, 0, len(req.Targets)),
+		DryRun:  req.DryRun,
+	}
+	changed := false
+	for _, target := range req.Targets {
+		res, err := mutateHostsForID(parsed, target)
+		if err != nil {
+			return nil, err
+		}
+		out.Results = append(out.Results, res)
+		if res.Changed {
+			changed = true
+		}
+		if req.UpdateTLSPolicies {
+			added := make([]string, 0)
+			removed := make([]string, 0)
+			addSet := toStringSet(target.AddDomains)
+			remSet := toStringSet(target.RemoveDomains)
+			for d := range addSet {
+				if strings.HasPrefix(d, "*.") {
+					added = append(added, d)
+				}
+			}
+			for d := range remSet {
+				removed = append(removed, d)
+			}
+			ch1, err := applyTLSPolicyChanges(parsed, added, req.TLSDNSChallenge, false)
+			if err != nil {
+				return nil, err
+			}
+			ch2, err := applyTLSPolicyChanges(parsed, removed, nil, true)
+			if err != nil {
+				return nil, err
+			}
+			changed = changed || ch1 || ch2
+		}
+	}
+	out.Changed = changed
+	out.Diff = buildDomainDiff(out.Results)
+	out.Preview = buildPreviewByDomainTargets(parsed, req.Targets)
+	if !changed {
+		return out, nil
+	}
+	if req.DryRun {
+		return out, nil
+	}
+	payload, err := mapToConfig(parsed)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.ApplyConfig(ctx, nodeID, payload, requestedBy); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (s *Service) MutateUpstreams(ctx context.Context, nodeID uuid.UUID, req MutateUpstreamsRequest, requestedBy string) (*MutateUpstreamsResponse, error) {
+	if len(req.Targets) == 0 {
+		return nil, fmt.Errorf("%w: targets are required", ErrInvalidMutationPayload)
+	}
+	raw, err := s.GetLiveConfig(ctx, nodeID)
+	if err != nil {
+		return nil, err
+	}
+	parsed, err := configToMap(raw)
+	if err != nil {
+		return nil, err
+	}
+	out := &MutateUpstreamsResponse{
+		Results: make([]UpstreamMutationResult, 0, len(req.Targets)),
+		DryRun:  req.DryRun,
+	}
+	for _, target := range req.Targets {
+		res, err := mutateUpstreamsForID(parsed, target)
+		if err != nil {
+			return nil, err
+		}
+		out.Results = append(out.Results, res)
+		out.Changed = out.Changed || res.Changed
+	}
+	out.Diff = buildUpstreamDiff(out.Results)
+	out.Preview = buildPreviewByUpstreamTargets(parsed, req.Targets)
+	if !out.Changed {
+		return out, nil
+	}
+	if req.DryRun {
+		return out, nil
+	}
+	payload, err := mapToConfig(parsed)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.ApplyConfig(ctx, nodeID, payload, requestedBy); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (s *Service) PropagateToDiscoveryPeers(ctx context.Context, sourceNodeID uuid.UUID, requestedBy string) (*PropagateResponse, error) {
+	source, err := s.nodes.GetByID(ctx, sourceNodeID)
+	if err != nil {
+		if repository.IsNotFound(err) {
+			return nil, models.ErrNodeNotFound
+		}
+		return nil, err
+	}
+	if source.DiscoveryConfigID == nil || *source.DiscoveryConfigID == uuid.Nil {
+		return &PropagateResponse{SourceNodeID: sourceNodeID}, nil
+	}
+	raw, err := s.GetLiveConfig(ctx, sourceNodeID)
+	if err != nil {
+		return nil, err
+	}
+	peers, err := s.nodes.ListByDiscoveryConfigID(ctx, *source.DiscoveryConfigID)
+	if err != nil {
+		return nil, err
+	}
+	resp := &PropagateResponse{
+		SourceNodeID: sourceNodeID,
+		AppliedTo:    make([]uuid.UUID, 0, len(peers)),
+		Skipped:      make([]uuid.UUID, 0, len(peers)),
+	}
+	for _, peer := range peers {
+		if peer.ID == sourceNodeID {
+			continue
+		}
+		if peer.EffectiveTransport() == models.TransportInventoryOnly {
+			resp.Skipped = append(resp.Skipped, peer.ID)
+			continue
+		}
+		if err := s.ApplyConfig(ctx, peer.ID, raw, requestedBy); err != nil {
+			resp.Skipped = append(resp.Skipped, peer.ID)
+			continue
+		}
+		resp.AppliedTo = append(resp.AppliedTo, peer.ID)
+	}
+	return resp, nil
 }
 
 func (s *Service) getIndexedConfig(ctx context.Context, nodeID uuid.UUID) (indexedConfig, error) {

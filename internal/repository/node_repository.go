@@ -46,6 +46,15 @@ func (r *NodeRepository) GetByID(ctx context.Context, id uuid.UUID) (*models.Cad
 	return &node, nil
 }
 
+func (r *NodeRepository) ListByDiscoveryConfigID(ctx context.Context, discoveryConfigID uuid.UUID) ([]models.CaddyNode, error) {
+	var nodes []models.CaddyNode
+	err := r.db.WithContext(ctx).
+		Where("discovery_config_id = ?", discoveryConfigID).
+		Order("created_at desc").
+		Find(&nodes).Error
+	return nodes, err
+}
+
 func (r *NodeRepository) Create(ctx context.Context, node *models.CaddyNode) error {
 	return r.db.WithContext(ctx).Create(node).Error
 }

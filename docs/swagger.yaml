@@ -42,6 +42,32 @@ definitions:
     - password
     - username
     type: object
+  handlers.dnsChallengeRequest:
+    properties:
+      api_token:
+        type: string
+      provider:
+        type: string
+    type: object
+  handlers.domainMutationTargetRequest:
+    properties:
+      add_domains:
+        items:
+          type: string
+        type: array
+      config_id:
+        type: string
+      match_indexes:
+        items:
+          type: integer
+        type: array
+      remove_domains:
+        items:
+          type: string
+        type: array
+    required:
+    - config_id
+    type: object
   handlers.loginRequest:
     properties:
       password:
@@ -58,6 +84,32 @@ definitions:
         type: string
     required:
     - refresh_token
+    type: object
+  handlers.mutateDomainsRequest:
+    properties:
+      dns_challenge:
+        $ref: '#/definitions/handlers.dnsChallengeRequest'
+      dry_run:
+        type: boolean
+      targets:
+        items:
+          $ref: '#/definitions/handlers.domainMutationTargetRequest'
+        type: array
+      update_tls_policies:
+        type: boolean
+    required:
+    - targets
+    type: object
+  handlers.mutateUpstreamsRequest:
+    properties:
+      dry_run:
+        type: boolean
+      targets:
+        items:
+          $ref: '#/definitions/handlers.upstreamMutationTargetRequest'
+        type: array
+    required:
+    - targets
     type: object
   handlers.refreshRequest:
     properties:
@@ -95,6 +147,21 @@ definitions:
         type: string
       username:
         type: string
+    type: object
+  handlers.upstreamMutationTargetRequest:
+    properties:
+      add_dial:
+        type: string
+      config_id:
+        type: string
+      probe_timeout_ms:
+        type: integer
+      prune_unhealthy:
+        type: boolean
+      remove_dial:
+        type: string
+    required:
+    - config_id
     type: object
   models.BackfillSnapshotsResponse:
     properties:
@@ -210,9 +277,84 @@ definitions:
       updated_at:
         type: string
     type: object
+  models.DomainMutationDiff:
+    properties:
+      added:
+        items:
+          type: string
+        type: array
+      removed:
+        items:
+          type: string
+        type: array
+    type: object
+  models.DomainMutationResult:
+    properties:
+      added:
+        items:
+          type: string
+        type: array
+      changed:
+        type: boolean
+      config_id:
+        type: string
+      hosts:
+        items:
+          type: string
+        type: array
+      removed:
+        items:
+          type: string
+        type: array
+    type: object
   models.ErrorResponse:
     properties:
       error:
+        type: string
+    type: object
+  models.MutateDomainsResponse:
+    properties:
+      changed:
+        type: boolean
+      diff:
+        $ref: '#/definitions/models.DomainMutationDiff'
+      dry_run:
+        type: boolean
+      preview:
+        additionalProperties: {}
+        type: object
+      results:
+        items:
+          $ref: '#/definitions/models.DomainMutationResult'
+        type: array
+    type: object
+  models.MutateUpstreamsResponse:
+    properties:
+      changed:
+        type: boolean
+      diff:
+        $ref: '#/definitions/models.UpstreamMutationDiff'
+      dry_run:
+        type: boolean
+      preview:
+        additionalProperties: {}
+        type: object
+      results:
+        items:
+          $ref: '#/definitions/models.UpstreamMutationResult'
+        type: array
+    type: object
+  models.PropagateConfigResponse:
+    properties:
+      applied_to:
+        items:
+          type: string
+        type: array
+      skipped:
+        items:
+          type: string
+        type: array
+      source_node_id:
         type: string
     type: object
   models.SnapshotScope:
@@ -223,6 +365,44 @@ definitions:
     x-enum-varnames:
     - SnapshotScopeNode
     - SnapshotScopeGroup
+  models.UpstreamMutationDiff:
+    properties:
+      added:
+        items:
+          type: string
+        type: array
+      pruned:
+        items:
+          type: string
+        type: array
+      removed:
+        items:
+          type: string
+        type: array
+    type: object
+  models.UpstreamMutationResult:
+    properties:
+      added:
+        items:
+          type: string
+        type: array
+      changed:
+        type: boolean
+      config_id:
+        type: string
+      pruned:
+        items:
+          type: string
+        type: array
+      removed:
+        items:
+          type: string
+        type: array
+      upstreams:
+        items:
+          type: string
+        type: array
+    type: object
   models.User:
     properties:
       created_at:
@@ -967,6 +1147,132 @@ paths:
       security:
       - BearerAuth: []
       summary: Get upstreams by @id
+      tags:
+      - caddy
+  /api/v1/nodes/{id}/config/mutate/domains:
+    post:
+      consumes:
+      - application/json
+      description: Adds/removes host domains on one or more config fragments by @id
+        and optional match indexes, then applies updated config
+      parameters:
+      - description: Node ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Domain mutation request
+        in: body
+        name: payload
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.mutateDomainsRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.MutateDomainsResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Mutate domains by config @id
+      tags:
+      - caddy
+  /api/v1/nodes/{id}/config/mutate/upstreams:
+    post:
+      consumes:
+      - application/json
+      description: Adds/removes/prunes upstream dials on one or more config fragments
+        by @id, then applies updated config
+      parameters:
+      - description: Node ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Upstream mutation request
+        in: body
+        name: payload
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.mutateUpstreamsRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.MutateUpstreamsResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Mutate upstream dials by config @id
+      tags:
+      - caddy
+  /api/v1/nodes/{id}/config/propagate:
+    post:
+      description: Fetches live config from source node and applies it to peer nodes
+        in the same discovery config
+      parameters:
+      - description: Source Node ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.PropagateConfigResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Propagate source node config to discovery peers
       tags:
       - caddy
   /api/v1/nodes/{id}/reload:
