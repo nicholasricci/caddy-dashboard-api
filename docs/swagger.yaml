@@ -13,6 +13,10 @@ definitions:
         items:
           type: string
         type: array
+      allowed_domain_profile_ids:
+        items:
+          type: string
+        type: array
       allowed_upstream_profile_ids:
         items:
           type: string
@@ -93,6 +97,20 @@ definitions:
     required:
     - config_id
     type: object
+  handlers.domainProfileWriteRequest:
+    properties:
+      bindings:
+        items:
+          $ref: '#/definitions/models.DomainProfileBinding'
+        type: array
+      description:
+        type: string
+      name:
+        type: string
+    required:
+    - bindings
+    - name
+    type: object
   handlers.loginRequest:
     properties:
       password:
@@ -142,6 +160,43 @@ definitions:
         type: string
     required:
     - refresh_token
+    type: object
+  handlers.registerDomainByProfileRequest:
+    properties:
+      dns_challenge:
+        $ref: '#/definitions/handlers.dnsChallengeRequest'
+      domains:
+        items:
+          type: string
+        type: array
+      dry_run:
+        type: boolean
+      update_tls_policies:
+        type: boolean
+    required:
+    - domains
+    type: object
+  handlers.registerDomainRequest:
+    properties:
+      config_id:
+        type: string
+      dns_challenge:
+        $ref: '#/definitions/handlers.dnsChallengeRequest'
+      domains:
+        items:
+          type: string
+        type: array
+      dry_run:
+        type: boolean
+      match_indexes:
+        items:
+          type: integer
+        type: array
+      update_tls_policies:
+        type: boolean
+    required:
+    - config_id
+    - domains
     type: object
   handlers.registerUpstreamByProfileRequest:
     properties:
@@ -229,6 +284,10 @@ definitions:
   models.APIKey:
     properties:
       allowed_discovery_config_ids:
+        items:
+          type: string
+        type: array
+      allowed_domain_profile_ids:
         items:
           type: string
         type: array
@@ -415,6 +474,34 @@ definitions:
           type: string
         type: array
     type: object
+  models.DomainProfile:
+    properties:
+      bindings:
+        items:
+          type: object
+        type: array
+      created_at:
+        type: string
+      description:
+        type: string
+      discovery_config_id:
+        type: string
+      id:
+        type: string
+      name:
+        type: string
+      updated_at:
+        type: string
+    type: object
+  models.DomainProfileBinding:
+    properties:
+      config_id:
+        type: string
+      match_indexes:
+        items:
+          type: integer
+        type: array
+    type: object
   models.ErrorResponse:
     properties:
       error:
@@ -462,6 +549,59 @@ definitions:
         items:
           type: string
         type: array
+      source_node_id:
+        type: string
+    type: object
+  models.RegisterDomainProfileResponse:
+    properties:
+      changed:
+        type: boolean
+      discovery_config_id:
+        type: string
+      domain_profile_id:
+        type: string
+      dry_run:
+        type: boolean
+      mutate:
+        $ref: '#/definitions/models.MutateDomainsResponse'
+      propagate:
+        $ref: '#/definitions/models.PropagateConfigResponse'
+      source_node_id:
+        type: string
+      targets:
+        items:
+          $ref: '#/definitions/models.RegisterDomainProfileTarget'
+        type: array
+    type: object
+  models.RegisterDomainProfileTarget:
+    properties:
+      config_id:
+        type: string
+      domains:
+        items:
+          type: string
+        type: array
+      match_indexes:
+        items:
+          type: integer
+        type: array
+    type: object
+  models.RegisterDomainResponse:
+    properties:
+      changed:
+        type: boolean
+      discovery_config_id:
+        type: string
+      domains:
+        items:
+          type: string
+        type: array
+      dry_run:
+        type: boolean
+      mutate:
+        $ref: '#/definitions/models.MutateDomainsResponse'
+      propagate:
+        $ref: '#/definitions/models.PropagateConfigResponse'
       source_node_id:
         type: string
     type: object
@@ -946,6 +1086,128 @@ paths:
       summary: Update discovery config
       tags:
       - discovery
+  /api/v1/discovery/{id}/domain-profiles:
+    get:
+      parameters:
+      - description: Discovery config ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List domain profiles for a discovery group
+      tags:
+      - domain-profiles
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Discovery config ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Profile payload
+        in: body
+        name: payload
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.domainProfileWriteRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/models.DomainProfile'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Create domain profile
+      tags:
+      - domain-profiles
+  /api/v1/discovery/{id}/register-domain:
+    post:
+      consumes:
+      - application/json
+      description: Adds hostnames to the first reachable Caddy node in the group and
+        propagates config to peers. Authenticated via API key.
+      parameters:
+      - description: Discovery config ID (Caddy proxy group)
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Registration payload
+        in: body
+        name: payload
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.registerDomainRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.RegisterDomainResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "502":
+          description: Bad Gateway
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      security:
+      - APIKeyAuth: []
+      summary: Register domains on a Caddy discovery group
+      tags:
+      - discovery
   /api/v1/discovery/{id}/register-upstream:
     post:
       consumes:
@@ -1138,6 +1400,146 @@ paths:
       summary: Create upstream profile
       tags:
       - upstream-profiles
+  /api/v1/domain-profiles/{id}:
+    delete:
+      parameters:
+      - description: Domain profile ID
+        in: path
+        name: id
+        required: true
+        type: string
+      responses:
+        "204":
+          description: No Content
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Delete domain profile
+      tags:
+      - domain-profiles
+    get:
+      parameters:
+      - description: Domain profile ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.DomainProfile'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get domain profile
+      tags:
+      - domain-profiles
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Domain profile ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Profile payload
+        in: body
+        name: payload
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.domainProfileWriteRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.DomainProfile'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Update domain profile
+      tags:
+      - domain-profiles
+  /api/v1/domain-profiles/{id}/register:
+    post:
+      consumes:
+      - application/json
+      description: Adds hostnames for all bindings in the profile on the first reachable
+        Caddy node and propagates to peers. Authenticated via API key.
+      parameters:
+      - description: Domain profile ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Registration payload
+        in: body
+        name: payload
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.registerDomainByProfileRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.RegisterDomainProfileResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "502":
+          description: Bad Gateway
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      security:
+      - APIKeyAuth: []
+      summary: Register domains using a domain profile
+      tags:
+      - domain-profiles
   /api/v1/health:
     get:
       description: Returns service health status

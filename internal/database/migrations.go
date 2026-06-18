@@ -15,5 +15,6 @@ func AutoMigrate(db *gorm.DB) error {
 		&models.AuditLog{},
 		&models.APIKey{},
 		&models.UpstreamProfile{},
+		&models.DomainProfile{},
 	)
 }

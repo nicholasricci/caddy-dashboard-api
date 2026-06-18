@@ -6,7 +6,7 @@
 Backend API in Go (Gin) to manage Caddy nodes across AWS regions with:
 
 - JWT local authentication (access + revocable refresh)
-- Scoped **API keys** for machine-to-machine calls (`register_upstream`)
+- Scoped **API keys** for machine-to-machine calls (`register_upstream`, `register_domain`)
 - Node discovery via EC2 tags
 - Manual node registration by private IP or instance ID
 - Caddy operations executed via AWS SSM Run Command
@@ -98,6 +98,28 @@ When one instance must register on multiple Caddy `@id` handlers (e.g. HTTP on p
 
 The legacy single-handler `register-upstream` endpoint and script remain unchanged.
 
+### M2M domain registration
+
+For backend services that must add hostnames to a Caddy proxy cluster without admin JWT (no EC2 user-data scripts):
+
+1. **Create an API key** (admin JWT): `POST /api/v1/api-keys` with `scopes: ["register_domain"]`, `allowed_discovery_config_ids` listing the target Caddy proxy discovery group UUID(s), and optionally `allowed_domain_profile_ids` for profile-based registration.
+
+2. **Register domain (single handler)** (API key): `POST /api/v1/discovery/{discovery_config_id}/register-domain` with `Authorization: Bearer <api_key>` and body:
+
+```json
+{
+  "config_id": "route-a",
+  "match_indexes": [0],
+  "domains": ["tenant-42.example.com"],
+  "update_tls_policies": false,
+  "dry_run": false
+}
+```
+
+Optional `dns_challenge` (with `update_tls_policies: true`) matches the admin `mutate/domains` payload. The API picks the first reachable Caddy node, mutates hosts, and propagates to peers.
+
+3. **Domain profile** (multiple `@id` handlers): create via `POST /api/v1/discovery/{discovery_config_id}/domain-profiles` with `bindings` (`config_id` + optional `match_indexes`). Register with `POST /api/v1/domain-profiles/{profile_id}/register` and body `{"domains": ["tenant-42.example.com"]}` — the same domains are added to every binding atomically.
+
 Admin key management: `GET /api/v1/api-keys`, `POST /api/v1/api-keys`, `POST /api/v1/api-keys/{id}/revoke`, `DELETE /api/v1/api-keys/{id}`.
 
 ## Required environment variables
@@ -149,6 +171,8 @@ This integration is optional: if you do not run the `loki` profile, logging beha
 - Caddy apply endpoint is rate-limited and has a larger request body limit.
 - `POST /api/v1/discovery/:id/register-upstream` is rate-limited by IP (M2M).
 - `POST /api/v1/upstream-profiles/:id/register` is rate-limited by IP (M2M).
+- `POST /api/v1/discovery/:id/register-domain` is rate-limited by IP (M2M).
+- `POST /api/v1/domain-profiles/:id/register` is rate-limited by IP (M2M).
 - Global request body limit applies to all routes by default.
 
 ## CI and release
