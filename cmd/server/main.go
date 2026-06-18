@@ -38,6 +38,9 @@ import (
 // @securityDefinitions.apikey BearerAuth
 // @in header
 // @name Authorization
+// @securityDefinitions.apikey APIKeyAuth
+// @in header
+// @name Authorization
 
 func main() {
 	autoMigrate := flag.Bool("auto-migrate", false, "run automigrate at startup")
@@ -183,6 +186,9 @@ func main() {
 	caddySvc := services.NewCaddyService(internalCaddySvc, nodeRepo, discoveryRepo, snapshotRepo)
 	userSvc := services.NewUserService(userRepo)
 	auditSvc := services.NewAuditService(auditRepo)
+	apiKeyRepo := repository.NewAPIKeyRepository(db)
+	apiKeySvc := services.NewAPIKeyService(apiKeyRepo)
+	registerUpstreamSvc := services.NewRegisterUpstreamService(caddySvc, nodeRepo, discoveryRepo, db)
 
 	authHandler := handlers.NewAuthHandler(authSvc, log)
 	healthHandler := handlers.NewHealthHandler(
@@ -200,22 +206,27 @@ func main() {
 	userHandler := handlers.NewUserHandler(userSvc, auditSvc, log)
 	auditHandler := handlers.NewAuditHandler(auditSvc, log)
 	adminHandler := handlers.NewAdminHandler(snapshotRepo, auditSvc, log)
+	apiKeyHandler := handlers.NewAPIKeyHandler(apiKeySvc, auditSvc, log)
+	registerUpstreamHandler := handlers.NewRegisterUpstreamHandler(registerUpstreamSvc, apiKeySvc, auditSvc, log)
 
 	router := routes.NewRouter(routes.Dependencies{
-		Logger:             log,
-		CORSAllowedOrigins: cfg.Server.CORSAllowedOrigins,
-		MaxBodyBytes:       cfg.Server.MaxBodyBytes,
-		MaxApplyBodyBytes:  cfg.Server.MaxApplyBodyBytes,
-		EnableSwagger:      cfg.Server.EnableSwagger && cfg.Server.GinMode != "release",
-		AuthService:        authSvc,
-		AuthHandler:        authHandler,
-		HealthHandler:      healthHandler,
-		NodeHandler:        nodeHandler,
-		DiscoveryHandler:   discoveryHandler,
-		CaddyHandler:       caddyHandler,
-		UserHandler:        userHandler,
-		AuditHandler:       auditHandler,
-		AdminHandler:       adminHandler,
+		Logger:                  log,
+		CORSAllowedOrigins:      cfg.Server.CORSAllowedOrigins,
+		MaxBodyBytes:            cfg.Server.MaxBodyBytes,
+		MaxApplyBodyBytes:       cfg.Server.MaxApplyBodyBytes,
+		EnableSwagger:           cfg.Server.EnableSwagger && cfg.Server.GinMode != "release",
+		AuthService:             authSvc,
+		AuthHandler:             authHandler,
+		HealthHandler:           healthHandler,
+		NodeHandler:             nodeHandler,
+		DiscoveryHandler:        discoveryHandler,
+		CaddyHandler:            caddyHandler,
+		UserHandler:             userHandler,
+		AuditHandler:            auditHandler,
+		AdminHandler:            adminHandler,
+		APIKeyHandler:           apiKeyHandler,
+		RegisterUpstreamHandler: registerUpstreamHandler,
+		APIKeyService:           apiKeySvc,
 	})
 
 	srv := &http.Server{

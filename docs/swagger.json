@@ -12,6 +12,151 @@
     },
     "basePath": "/",
     "paths": {
+        "/api/v1/api-keys": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "api-keys"
+                ],
+                "summary": "List API keys",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.APIKeyListResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns the secret once; it cannot be retrieved again.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "api-keys"
+                ],
+                "summary": "Create API key",
+                "parameters": [
+                    {
+                        "description": "API key payload",
+                        "name": "payload",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handlers.createAPIKeyRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/models.APIKeyCreateResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/api-keys/{id}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "tags": [
+                    "api-keys"
+                ],
+                "summary": "Delete API key",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "API key ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/api-keys/{id}/revoke": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "tags": [
+                    "api-keys"
+                ],
+                "summary": "Revoke API key",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "API key ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/audit": {
             "get": {
                 "security": [
@@ -402,6 +547,94 @@
                     },
                     "404": {
                         "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/discovery/{id}/register-upstream": {
+            "post": {
+                "security": [
+                    {
+                        "APIKeyAuth": []
+                    }
+                ],
+                "description": "Adds an upstream dial to the first reachable Caddy node in the group and propagates config to peers. Authenticated via API key.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "discovery"
+                ],
+                "summary": "Register upstream dial on a Caddy discovery group",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Discovery config ID (Caddy proxy group)",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Registration payload",
+                        "name": "payload",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handlers.registerUpstreamRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.RegisterUpstreamResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorResponse"
+                        }
+                    },
+                    "502": {
+                        "description": "Bad Gateway",
                         "schema": {
                             "$ref": "#/definitions/models.ErrorResponse"
                         }
@@ -1778,6 +2011,37 @@
                 }
             }
         },
+        "handlers.createAPIKeyRequest": {
+            "type": "object",
+            "required": [
+                "allowed_discovery_config_ids",
+                "name",
+                "scopes"
+            ],
+            "properties": {
+                "allowed_discovery_config_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "expires_at": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "scopes": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "example": [
+                        "register_upstream"
+                    ]
+                }
+            }
+        },
         "handlers.createNodeRequest": {
             "type": "object",
             "required": [
@@ -1948,6 +2212,29 @@
                 }
             }
         },
+        "handlers.registerUpstreamRequest": {
+            "type": "object",
+            "required": [
+                "config_id"
+            ],
+            "properties": {
+                "config_id": {
+                    "type": "string"
+                },
+                "dial": {
+                    "type": "string"
+                },
+                "dry_run": {
+                    "type": "boolean"
+                },
+                "port": {
+                    "type": "integer"
+                },
+                "private_ip": {
+                    "type": "string"
+                }
+            }
+        },
         "handlers.updateNodeRequest": {
             "type": "object",
             "properties": {
@@ -2014,6 +2301,69 @@
                 },
                 "remove_dial": {
                     "type": "string"
+                }
+            }
+        },
+        "models.APIKey": {
+            "type": "object",
+            "properties": {
+                "allowed_discovery_config_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "expires_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "key_prefix": {
+                    "type": "string"
+                },
+                "last_used_at": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "revoked_at": {
+                    "type": "string"
+                },
+                "scopes": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.APIKeyCreateResponse": {
+            "type": "object",
+            "properties": {
+                "api_key": {
+                    "$ref": "#/definitions/models.APIKey"
+                },
+                "secret": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.APIKeyListResponse": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.APIKey"
+                    }
                 }
             }
         },
@@ -2311,6 +2661,32 @@
                 }
             }
         },
+        "models.RegisterUpstreamResponse": {
+            "type": "object",
+            "properties": {
+                "changed": {
+                    "type": "boolean"
+                },
+                "dial": {
+                    "type": "string"
+                },
+                "discovery_config_id": {
+                    "type": "string"
+                },
+                "dry_run": {
+                    "type": "boolean"
+                },
+                "mutate": {
+                    "$ref": "#/definitions/models.MutateUpstreamsResponse"
+                },
+                "propagate": {
+                    "$ref": "#/definitions/models.PropagateConfigResponse"
+                },
+                "source_node_id": {
+                    "type": "string"
+                }
+            }
+        },
         "models.SnapshotScope": {
             "type": "string",
             "enum": [
@@ -2402,6 +2778,11 @@
         }
     },
     "securityDefinitions": {
+        "APIKeyAuth": {
+            "type": "apiKey",
+            "name": "Authorization",
+            "in": "header"
+        },
         "BearerAuth": {
             "type": "apiKey",
             "name": "Authorization",
