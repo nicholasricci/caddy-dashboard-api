@@ -4,7 +4,7 @@ Documento di contesto per assistenti AI che lavorano su questo repository.
 
 ## Scopo del progetto
 
-**Caddy Dashboard** è un backend API in **Go** (framework **Gin**) per gestire nodi **Caddy** su cloud (principalmente **AWS**, con estensioni **GCP** e **Azure**): registrazione manuale o discovery (EC2, SSM, IP statici, label GCP, tag Azure), operazioni su Caddy tramite **AWS SSM Run Command**, **GCP VM Manager / OS Config**, **Azure VM Run Command**, oltre a **SSH** e **admin HTTP** diretto, persistenza di nodi, regole di discovery, snapshot di configurazione e utenti in **MariaDB/MySQL** (driver GORM `mysql`), autenticazione **JWT** con ruoli `admin` e `user`.
+**Caddy Dashboard** è un backend API in **Go** (framework **Gin**) per gestire nodi **Caddy** su cloud (principalmente **AWS**, con estensioni **GCP** e **Azure**): registrazione manuale o discovery (EC2, SSM, IP statici, label GCP, tag Azure), operazioni su Caddy tramite **AWS SSM Run Command**, **GCP VM Manager / OS Config**, **Azure VM Run Command**, oltre a **SSH** e **admin HTTP** diretto, persistenza di nodi, regole di discovery, snapshot di configurazione e utenti in **MariaDB/MySQL** (driver GORM `mysql`), autenticazione **JWT** con ruoli `admin` e `user`, più **API key** scoped per chiamate M2M (es. registrazione upstream da EC2 al boot).
 
 Modulo Go: `github.com/nicholasricci/caddy-dashboard` · Go **1.26**.
 
@@ -13,7 +13,7 @@ Modulo Go: `github.com/nicholasricci/caddy-dashboard` · Go **1.26**.
 | Area | Tecnologia |
 |------|------------|
 | HTTP API | Gin, middleware CORS e logging |
-| Auth | JWT (`github.com/golang-jwt/jwt/v5`), bcrypt per password utente |
+| Auth | JWT (`github.com/golang-jwt/jwt/v5`), bcrypt per password utente; API key M2M (`cdk_live_…`, SHA-256 in DB, scope `register_upstream`) |
 | Database | GORM + `gorm.io/driver/mysql` (DSN TCP MariaDB/MySQL) |
 | AWS | AWS SDK v2: EC2, SSM, Secrets Manager (config supporta ARN segreti in YAML) |
 | GCP / Azure | OS Config (guest policy) e Azure Run Command per esecuzione remota opzionale; credenziali via ADC / DefaultAzureCredential |
@@ -28,18 +28,19 @@ Modulo Go: `github.com/nicholasricci/caddy-dashboard` · Go **1.26**.
 cmd/server/          # Entrypoint HTTP, wiring di config, DB, AWS, GCP/Azure, handler, router
 configs/             # config.yaml (server, auth, aws, gcp, azure, database, observability)
 docs/                # Swagger generato (swagger.json, swagger.yaml, docs.go) — non editare a mano
-internal/api/handlers/   # Handler Gin per auth, health, nodes, discovery, caddy, users
-internal/api/middleware/ # Auth JWT, RequireAdmin, CORS, request logger
+internal/api/handlers/   # Handler Gin per auth, health, nodes, discovery, caddy, users, api-keys, register-upstream
+internal/api/middleware/ # Auth JWT, API key M2M, RequireAdmin, CORS, request logger
 internal/api/routes/     # Registrazione route e gruppi protected/admin
-internal/auth/       # Servizio JWT e validazione utenti
+internal/auth/       # Servizio JWT, generazione/hash API key
 internal/aws/        # Client multi-regione, EC2, SSM, Secrets
 internal/caddy/      # Esecuzione comandi Caddy via dispatcher (SSM, SSH, HTTP admin, GCP OS Config, Azure Run Command), snapshot
 internal/config/     # Load configurazione (Viper + env)
 internal/database/   # Connessione GORM, AutoMigrate
-internal/models/     # Entità GORM (CaddyNode, DiscoveryConfig, CaddySnapshot, User, …)
+internal/models/     # Entità GORM (CaddyNode, DiscoveryConfig, CaddySnapshot, User, APIKey, …)
 internal/repository/ # Accesso dati
-internal/services/   # Logica di dominio (node, discovery, caddy, user)
+internal/services/   # Logica di dominio (node, discovery, caddy, user, api_key, register_upstream)
 pkg/logger/          # Costruzione logger Zap
+scripts/             # Script operativi (es. ec2-register-upstream.sh per user-data EC2)
 tools/mcp-server/    # Server MCP Node/TS per Cursor (dev only)
 ```
 
@@ -57,19 +58,23 @@ tools/mcp-server/    # Server MCP Node/TS per Cursor (dev only)
 
 - Prefisso API: **`/api/v1`**.
 - Swagger UI: `http://<host>:<port>/swagger/index.html`.
-- Autenticazione: header `Authorization: Bearer <access_token>` per route protette.
-- **Ruoli:**
+- Autenticazione umana: header `Authorization: Bearer <access_token>` per route protette JWT.
+- Autenticazione M2M: stesso header con API key `cdk_live_…` sulle route dedicate (non JWT).
+- **Ruoli JWT:**
   - Utente autenticato: lettura nodi/discovery, snapshot propri per nodo, ecc.
-  - **`admin`**: mutazioni su nodi, discovery, utenti; sync/apply/reload Caddy; run discovery.
+  - **`admin`**: mutazioni su nodi, discovery, utenti; sync/apply/reload Caddy; run discovery; gestione API key.
 
 Endpoint principali (dettaglio in [`internal/api/routes/routes.go`](internal/api/routes/routes.go)):
 
 - Pubblici: `GET /api/v1/health`, `GET /api/v1/ready`, `POST /api/v1/auth/login`, `POST /api/v1/auth/refresh`.
-- Protetti: CRUD/list nodi e discovery in lettura.
-- Protetti: `POST /api/v1/auth/logout`.
-- Solo admin: creazione/aggiornamento/cancellazione nodi e discovery; `POST .../sync`, `/apply`, `/reload`; `GET /nodes/:id/snapshots`; `GET /discovery/:id/snapshots`; `POST /discovery/:id/run`; gestione utenti; `GET /audit`.
-- Solo admin: introspezione config Caddy live con `GET /nodes/:id/config/live/ids`, `GET /nodes/:id/config/live/ids/:configId`, `GET /nodes/:id/config/live/ids/:configId/upstreams`.
-- Solo admin: endpoint operativo `POST /api/v1/snapshots/backfill` per rilanciare on-demand il backfill `discovery_config_id` sugli snapshot legacy (idempotente, rate-limited).
+- Protetti JWT: CRUD/list nodi e discovery in lettura.
+- Protetti JWT: `POST /api/v1/auth/logout`.
+- Solo admin JWT: creazione/aggiornamento/cancellazione nodi e discovery; `POST .../sync`, `/apply`, `/reload`; `GET /nodes/:id/snapshots`; `GET /discovery/:id/snapshots`; `POST /discovery/:id/run`; gestione utenti; `GET /audit`.
+- Solo admin JWT: introspezione config Caddy live con `GET /nodes/:id/config/live/ids`, `GET /nodes/:id/config/live/ids/:configId`, `GET /nodes/:id/config/live/ids/:configId/upstreams`.
+- Solo admin JWT: `POST /api/v1/nodes/:id/config/mutate/upstreams`, `POST /api/v1/nodes/:id/config/propagate`.
+- Solo admin JWT: endpoint operativo `POST /api/v1/snapshots/backfill` per rilanciare on-demand il backfill `discovery_config_id` sugli snapshot legacy (idempotente, rate-limited).
+- Solo admin JWT: `GET/POST /api/v1/api-keys`, `POST /api/v1/api-keys/:id/revoke`, `DELETE /api/v1/api-keys/:id`.
+- **API key M2M** (scope `register_upstream`, discovery autorizzato): `POST /api/v1/discovery/:id/register-upstream` — aggiunge un dial upstream sul primo nodo Caddy raggiungibile del gruppo e propaga ai peer (lock per discovery group).
 
 ## Dominio funzionale
 
@@ -77,6 +82,8 @@ Endpoint principali (dettaglio in [`internal/api/routes/routes.go`](internal/api
 - **Discovery (`DiscoveryConfig`)**: regole per trovare nodi (`aws_tag`, `aws_ssm`, `static_ip`, `gcp_labels`, `azure_tags`; `aws_cidr` non implementato). Metodi GCP/Azure richiedono credenziali cloud (ADC / DefaultAzureCredential) e `parameters` JSON documentati in Swagger.
 - **Snapshot**: versioni di configurazione Caddy persistite dopo sync/apply, con scope configurabile per `DiscoveryConfig` (`node` o `group`).
 - **Utenti**: username, ruolo, password hash; JWT emessi al login.
+- **API key (`APIKey`)**: nome progetto, `key_prefix`, `key_hash`, `scopes` (es. `register_upstream`), `allowed_discovery_config_ids`, lifecycle (`expires_at`, `revoked_at`, `last_used_at`). Secret mostrato solo alla creazione.
+- **Registrazione upstream EC2**: l'istanza app chiama `register-upstream` con `discovery_config_id` del **cluster Caddy proxy** (non del proprio ASG), più `config_id` (@id Caddy) e porta dal launch template; l'API non richiede l'UUID del nodo proxy. Script: [`scripts/ec2-register-upstream.sh`](scripts/ec2-register-upstream.sh).
 
 Operazioni Caddy lato macchina remota avvengono tramite il **dispatcher** (SSM, SSH, HTTP admin, GCP OS Config, Azure Run Command) a seconda del `transport` del nodo. Le letture live e i metadati derivati (`@id`, upstream) sono cache-ati in memoria per nodo con TTL configurabile (`caddy.cache_ttl` / `CADDY_CACHE_TTL`) e invalidazione su mutazioni (`apply`, `sync`, `reload`).
 
@@ -95,7 +102,7 @@ make mcp-build    # build server MCP in tools/mcp-server
 
 ## Server MCP (solo sviluppo)
 
-Sotto [`tools/mcp-server/`](tools/mcp-server/) c’è un server **MCP** per integrare Cursor con lo Swagger e chiamate HTTP **limitate** (GET su `/api/v1/*` + POST solo login/refresh, denylist su path pericolosi, gate `CADDY_MCP_DEV=1`). **Non** è parte del deploy di produzione. Istruzioni: [`tools/mcp-server/README.md`](tools/mcp-server/README.md).
+Sotto [`tools/mcp-server/`](tools/mcp-server/) c’è un server **MCP** per integrare Cursor con lo Swagger e chiamate HTTP **limitate** (GET su `/api/v1/*` + POST solo login/refresh/logout/backfill, denylist su path pericolosi incluso `register-upstream`, gate `CADDY_MCP_DEV=1`). **Non** espone mutazioni Caddy né `register-upstream` (M2M only). **Non** è parte del deploy di produzione. Istruzioni: [`tools/mcp-server/README.md`](tools/mcp-server/README.md).
 
 ## Convenzioni per modifiche al codice
 
@@ -108,8 +115,9 @@ Sotto [`tools/mcp-server/`](tools/mcp-server/) c’è un server **MCP** per inte
 ## Sicurezza e ambienti
 
 - `JWT_SECRET` deve essere robusto in produzione.
+- API key M2M: conservare il secret in Secrets Manager sull'EC2; ruotare revocando la chiave e creandone una nuova.
 - Credenziali AWS tramite profile, variabili d’ambiente o ruolo IAM a seconda dell’ambiente.
-- Le azioni admin (apply/reload/sync, run discovery) hanno **impatto reale** su AWS e sui nodi: trattare staging/prod con attenzione.
+- Le azioni admin e `register-upstream` (mutate + propagate) hanno **impatto reale** sui nodi Caddy: trattare staging/prod con attenzione.
 - **Dipendenze e vulnerabilità:** [`.github/dependabot.yml`](.github/dependabot.yml) monitora `go.mod` e GitHub Actions in modalità solo-sicurezza (`open-pull-requests-limit: 0` evita bump schedulati non critici). Abilitare una tantum su GitHub → **Settings → Code security and analysis**: **Dependabot alerts** e **Dependabot security updates** (le PR automatiche su CVE richiedono entrambi). La CI in [`.github/workflows/ci.yml`](.github/workflows/ci.yml) esegue anche `govulncheck` come controllo complementare su ogni push/PR.
 
 ## Frontend

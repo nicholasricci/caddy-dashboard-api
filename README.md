@@ -6,6 +6,7 @@
 Backend API in Go (Gin) to manage Caddy nodes across AWS regions with:
 
 - JWT local authentication (access + revocable refresh)
+- Scoped **API keys** for machine-to-machine calls (`register_upstream`)
 - Node discovery via EC2 tags
 - Manual node registration by private IP or instance ID
 - Caddy operations executed via AWS SSM Run Command
@@ -67,6 +68,27 @@ Discovery snapshots are available via `GET /api/v1/discovery/:id/snapshots`; nod
 
 Admin operators can re-run legacy snapshot backfill on demand with `POST /api/v1/snapshots/backfill` (rate-limited).
 
+### M2M API keys and upstream registration
+
+For EC2 (or other automation) that must add upstream dials to a Caddy proxy cluster without admin JWT:
+
+1. **Create an API key** (admin JWT): `POST /api/v1/api-keys` with `scopes: ["register_upstream"]` and `allowed_discovery_config_ids` listing the target discovery group UUID(s). The plaintext secret (`cdk_live_…`) is returned **once**.
+2. **Register upstream** (API key): `POST /api/v1/discovery/{discovery_config_id}/register-upstream` with `Authorization: Bearer <api_key>` and body:
+
+```json
+{
+  "config_id": "myapp-prod-route",
+  "port": 8080,
+  "private_ip": "10.0.1.42"
+}
+```
+
+The API picks the first reachable Caddy node in that discovery group, mutates upstreams, and propagates config to peers. See Swagger for the full response shape.
+
+3. **EC2 user-data**: [`scripts/ec2-register-upstream.sh`](scripts/ec2-register-upstream.sh) reads the instance private IP from IMDS and calls the endpoint above. Store the API key in AWS Secrets Manager (`API_KEY_SECRET_ARN`); set `DISCOVERY_CONFIG_ID`, `CONFIG_ID`, `UPSTREAM_PORT`, and `CADDY_DASHBOARD_URL` in the launch template.
+
+Admin key management: `GET /api/v1/api-keys`, `POST /api/v1/api-keys`, `POST /api/v1/api-keys/{id}/revoke`, `DELETE /api/v1/api-keys/{id}`.
+
 ## Required environment variables
 
 At minimum, set:
@@ -114,6 +136,7 @@ This integration is optional: if you do not run the `loki` profile, logging beha
 
 - Login/refresh endpoints are rate-limited by IP.
 - Caddy apply endpoint is rate-limited and has a larger request body limit.
+- `POST /api/v1/discovery/:id/register-upstream` is rate-limited by IP (M2M).
 - Global request body limit applies to all routes by default.
 
 ## CI and release

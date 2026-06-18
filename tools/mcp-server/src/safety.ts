@@ -70,7 +70,10 @@ export function isDenylistedPath(pathname: string): boolean {
   if (lower.includes("/apply") && lower.includes("/nodes/")) return true;
   if (lower.includes("/reload") && lower.includes("/nodes/")) return true;
   if (lower.includes("/sync") && lower.includes("/nodes/")) return true;
+  if (lower.includes("/mutate/") && lower.includes("/nodes/")) return true;
+  if (lower.includes("/propagate") && lower.includes("/nodes/")) return true;
   if (/\/discovery\/[^/]+\/run$/i.test(pathname)) return true;
+  if (/\/discovery\/[^/]+\/register-upstream$/i.test(pathname)) return true;
   return false;
 }
 

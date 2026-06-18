@@ -7,6 +7,7 @@ import (
 	"github.com/nicholasricci/caddy-dashboard/internal/api/handlers"
 	"github.com/nicholasricci/caddy-dashboard/internal/api/middleware"
 	"github.com/nicholasricci/caddy-dashboard/internal/auth"
+	"github.com/nicholasricci/caddy-dashboard/internal/services"
 	swaggerfiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
 	"go.uber.org/zap"
@@ -14,20 +15,23 @@ import (
 )
 
 type Dependencies struct {
-	Logger             *zap.Logger
-	CORSAllowedOrigins []string
-	MaxBodyBytes       int64
-	MaxApplyBodyBytes  int64
-	EnableSwagger      bool
-	AuthService        *auth.Service
-	AuthHandler        *handlers.AuthHandler
-	HealthHandler      *handlers.HealthHandler
-	NodeHandler        *handlers.NodeHandler
-	DiscoveryHandler   *handlers.DiscoveryHandler
-	CaddyHandler       *handlers.CaddyHandler
-	UserHandler        *handlers.UserHandler
-	AuditHandler       *handlers.AuditHandler
-	AdminHandler       *handlers.AdminHandler
+	Logger                  *zap.Logger
+	CORSAllowedOrigins      []string
+	MaxBodyBytes            int64
+	MaxApplyBodyBytes       int64
+	EnableSwagger           bool
+	AuthService             *auth.Service
+	AuthHandler             *handlers.AuthHandler
+	HealthHandler           *handlers.HealthHandler
+	NodeHandler             *handlers.NodeHandler
+	DiscoveryHandler        *handlers.DiscoveryHandler
+	CaddyHandler            *handlers.CaddyHandler
+	UserHandler             *handlers.UserHandler
+	AuditHandler            *handlers.AuditHandler
+	AdminHandler            *handlers.AdminHandler
+	APIKeyHandler           *handlers.APIKeyHandler
+	RegisterUpstreamHandler *handlers.RegisterUpstreamHandler
+	APIKeyService           *services.APIKeyService
 }
 
 func NewRouter(dep Dependencies) *gin.Engine {
@@ -92,6 +96,18 @@ func NewRouter(dep Dependencies) *gin.Engine {
 	admin.DELETE("/users/:id", dep.UserHandler.Delete)
 	admin.GET("/audit", dep.AuditHandler.List)
 	admin.POST("/snapshots/backfill", middleware.RateLimitByIP(backfillLimiter), dep.AdminHandler.BackfillSnapshots)
+
+	admin.GET("/api-keys", dep.APIKeyHandler.List)
+	admin.POST("/api-keys", dep.APIKeyHandler.Create)
+	admin.POST("/api-keys/:id/revoke", dep.APIKeyHandler.Revoke)
+	admin.DELETE("/api-keys/:id", dep.APIKeyHandler.Delete)
+
+	if dep.APIKeyService != nil && dep.RegisterUpstreamHandler != nil {
+		registerLimiter := middleware.NewLimiterStore(rate.Every(time.Second), 20)
+		m2m := api.Group("")
+		m2m.Use(middleware.APIKeyAuthMiddleware(dep.APIKeyService))
+		m2m.POST("/discovery/:id/register-upstream", middleware.RateLimitByIP(registerLimiter), dep.RegisterUpstreamHandler.RegisterUpstream)
+	}
 
 	return r
 }

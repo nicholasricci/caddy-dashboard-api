@@ -13,5 +13,6 @@ func AutoMigrate(db *gorm.DB) error {
 		&models.User{},
 		&models.RefreshToken{},
 		&models.AuditLog{},
+		&models.APIKey{},
 	)
 }
