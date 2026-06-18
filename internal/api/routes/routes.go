@@ -31,6 +31,7 @@ type Dependencies struct {
 	AdminHandler            *handlers.AdminHandler
 	APIKeyHandler           *handlers.APIKeyHandler
 	RegisterUpstreamHandler *handlers.RegisterUpstreamHandler
+	UpstreamProfileHandler  *handlers.UpstreamProfileHandler
 	APIKeyService           *services.APIKeyService
 }
 
@@ -89,6 +90,12 @@ func NewRouter(dep Dependencies) *gin.Engine {
 	admin.POST("/discovery/:id/run", dep.DiscoveryHandler.Run)
 	admin.GET("/discovery/:id/snapshots", dep.DiscoveryHandler.ListSnapshots)
 
+	admin.GET("/discovery/:id/upstream-profiles", dep.UpstreamProfileHandler.ListByDiscovery)
+	admin.POST("/discovery/:id/upstream-profiles", dep.UpstreamProfileHandler.Create)
+	admin.GET("/upstream-profiles/:id", dep.UpstreamProfileHandler.Get)
+	admin.PUT("/upstream-profiles/:id", dep.UpstreamProfileHandler.Update)
+	admin.DELETE("/upstream-profiles/:id", dep.UpstreamProfileHandler.Delete)
+
 	admin.GET("/users", dep.UserHandler.List)
 	admin.GET("/users/:id", dep.UserHandler.Get)
 	admin.POST("/users", dep.UserHandler.Create)
@@ -107,6 +114,7 @@ func NewRouter(dep Dependencies) *gin.Engine {
 		m2m := api.Group("")
 		m2m.Use(middleware.APIKeyAuthMiddleware(dep.APIKeyService))
 		m2m.POST("/discovery/:id/register-upstream", middleware.RateLimitByIP(registerLimiter), dep.RegisterUpstreamHandler.RegisterUpstream)
+		m2m.POST("/upstream-profiles/:id/register", middleware.RateLimitByIP(registerLimiter), dep.RegisterUpstreamHandler.RegisterUpstreamByProfile)
 	}
 
 	return r

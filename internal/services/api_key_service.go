@@ -14,15 +14,18 @@ import (
 )
 
 var (
-	ErrAPIKeyNotFound       = errors.New("api key not found")
-	ErrAPIKeyInvalid        = errors.New("invalid api key")
-	ErrAPIKeyRevoked        = errors.New("api key revoked")
-	ErrAPIKeyExpired        = errors.New("api key expired")
-	ErrAPIKeyNameRequired   = errors.New("api key name is required")
-	ErrAPIKeyScopeRequired  = errors.New("at least one scope is required")
-	ErrAPIKeyDiscoveryEmpty = errors.New("at least one allowed discovery config id is required")
-	ErrAPIKeyForbidden      = errors.New("api key not authorized for discovery config")
-	ErrAPIKeyScopeMissing   = errors.New("api key missing required scope")
+	ErrAPIKeyNotFound                 = errors.New("api key not found")
+	ErrAPIKeyInvalid                  = errors.New("invalid api key")
+	ErrAPIKeyRevoked                  = errors.New("api key revoked")
+	ErrAPIKeyExpired                  = errors.New("api key expired")
+	ErrAPIKeyNameRequired             = errors.New("api key name is required")
+	ErrAPIKeyScopeRequired            = errors.New("at least one scope is required")
+	ErrAPIKeyDiscoveryEmpty           = errors.New("at least one allowed discovery config id is required")
+	ErrAPIKeyForbidden                = errors.New("api key not authorized for discovery config")
+	ErrAPIKeyProfileForbidden         = errors.New("api key not authorized for upstream profile")
+	ErrAPIKeyProfileDiscoveryMismatch = errors.New("upstream profile discovery not in allowed discovery config ids")
+	ErrAPIKeyProfileNotFound          = errors.New("upstream profile not found")
+	ErrAPIKeyScopeMissing             = errors.New("api key missing required scope")
 )
 
 // ValidatedAPIKey is attached to request context after successful API key auth.
@@ -31,20 +34,23 @@ type ValidatedAPIKey struct {
 	Name                      string
 	Scopes                    []string
 	AllowedDiscoveryConfigIDs []uuid.UUID
+	AllowedUpstreamProfileIDs []uuid.UUID
 }
 
 type APIKeyService struct {
-	repo *repository.APIKeyRepository
+	repo     *repository.APIKeyRepository
+	profiles *repository.UpstreamProfileRepository
 }
 
-func NewAPIKeyService(repo *repository.APIKeyRepository) *APIKeyService {
-	return &APIKeyService{repo: repo}
+func NewAPIKeyService(repo *repository.APIKeyRepository, profiles *repository.UpstreamProfileRepository) *APIKeyService {
+	return &APIKeyService{repo: repo, profiles: profiles}
 }
 
 type CreateAPIKeyInput struct {
 	Name                      string
 	Scopes                    []string
 	AllowedDiscoveryConfigIDs []uuid.UUID
+	AllowedUpstreamProfileIDs []uuid.UUID
 	ExpiresAt                 *time.Time
 }
 
@@ -76,11 +82,19 @@ func (s *APIKeyService) Create(ctx context.Context, in CreateAPIKeyInput) (*mode
 	if len(allowed) == 0 {
 		return nil, ErrAPIKeyDiscoveryEmpty
 	}
+	profileIDs := uniqueUUIDs(in.AllowedUpstreamProfileIDs)
+	if err := s.validateAllowedProfiles(ctx, allowed, profileIDs); err != nil {
+		return nil, err
+	}
 	scopesJSON, err := json.Marshal(scopes)
 	if err != nil {
 		return nil, err
 	}
 	allowedJSON, err := json.Marshal(uuidStrings(allowed))
+	if err != nil {
+		return nil, err
+	}
+	profilesJSON, err := json.Marshal(uuidStrings(profileIDs))
 	if err != nil {
 		return nil, err
 	}
@@ -94,6 +108,7 @@ func (s *APIKeyService) Create(ctx context.Context, in CreateAPIKeyInput) (*mode
 		KeyHash:                   hash,
 		Scopes:                    scopesJSON,
 		AllowedDiscoveryConfigIDs: allowedJSON,
+		AllowedUpstreamProfileIDs: profilesJSON,
 		ExpiresAt:                 in.ExpiresAt,
 	}
 	if err := s.repo.Create(ctx, key); err != nil {
@@ -152,20 +167,19 @@ func (s *APIKeyService) Validate(ctx context.Context, plaintext string) (*Valida
 	if err != nil {
 		return nil, err
 	}
-	allowed := make([]uuid.UUID, 0, len(allowedStr))
-	for _, raw := range allowedStr {
-		id, err := uuid.Parse(strings.TrimSpace(raw))
-		if err != nil {
-			continue
-		}
-		allowed = append(allowed, id)
+	allowed := parseUUIDSlice(allowedStr)
+	profilesStr, err := parseStringSliceJSON(key.AllowedUpstreamProfileIDs)
+	if err != nil {
+		return nil, err
 	}
+	profiles := parseUUIDSlice(profilesStr)
 	_ = s.repo.TouchLastUsed(ctx, key.ID, now)
 	return &ValidatedAPIKey{
 		ID:                        key.ID,
 		Name:                      key.Name,
 		Scopes:                    scopes,
 		AllowedDiscoveryConfigIDs: allowed,
+		AllowedUpstreamProfileIDs: profiles,
 	}, nil
 }
 
@@ -182,6 +196,45 @@ func (s *APIKeyService) AuthorizeDiscovery(validated *ValidatedAPIKey, discovery
 		}
 	}
 	return ErrAPIKeyForbidden
+}
+
+func (s *APIKeyService) AuthorizeUpstreamProfile(validated *ValidatedAPIKey, profileID uuid.UUID, discoveryConfigID uuid.UUID, requiredScope string) error {
+	if validated == nil {
+		return ErrAPIKeyInvalid
+	}
+	if !containsString(validated.Scopes, requiredScope) {
+		return ErrAPIKeyScopeMissing
+	}
+	if !containsUUID(validated.AllowedUpstreamProfileIDs, profileID) {
+		return ErrAPIKeyProfileForbidden
+	}
+	if !containsUUID(validated.AllowedDiscoveryConfigIDs, discoveryConfigID) {
+		return ErrAPIKeyForbidden
+	}
+	return nil
+}
+
+func (s *APIKeyService) validateAllowedProfiles(ctx context.Context, allowedDiscoveries, profileIDs []uuid.UUID) error {
+	if len(profileIDs) == 0 || s.profiles == nil {
+		return nil
+	}
+	profiles, err := s.profiles.GetByIDs(ctx, profileIDs)
+	if err != nil {
+		return err
+	}
+	found := make(map[uuid.UUID]struct{}, len(profiles))
+	for _, p := range profiles {
+		found[p.ID] = struct{}{}
+		if !containsUUID(allowedDiscoveries, p.DiscoveryConfigID) {
+			return ErrAPIKeyProfileDiscoveryMismatch
+		}
+	}
+	for _, id := range profileIDs {
+		if _, ok := found[id]; !ok {
+			return ErrAPIKeyProfileNotFound
+		}
+	}
+	return nil
 }
 
 func normalizeScopes(scopes []string) []string {
@@ -243,4 +296,25 @@ func containsString(items []string, want string) bool {
 		}
 	}
 	return false
+}
+
+func containsUUID(items []uuid.UUID, want uuid.UUID) bool {
+	for _, item := range items {
+		if item == want {
+			return true
+		}
+	}
+	return false
+}
+
+func parseUUIDSlice(raw []string) []uuid.UUID {
+	out := make([]uuid.UUID, 0, len(raw))
+	for _, item := range raw {
+		id, err := uuid.Parse(strings.TrimSpace(item))
+		if err != nil {
+			continue
+		}
+		out = append(out, id)
+	}
+	return out
 }

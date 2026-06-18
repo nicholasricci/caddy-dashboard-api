@@ -13,6 +13,10 @@ definitions:
         items:
           type: string
         type: array
+      allowed_upstream_profile_ids:
+        items:
+          type: string
+        type: array
       expires_at:
         type: string
       name:
@@ -139,6 +143,15 @@ definitions:
     required:
     - refresh_token
     type: object
+  handlers.registerUpstreamByProfileRequest:
+    properties:
+      dry_run:
+        type: boolean
+      private_ip:
+        type: string
+    required:
+    - private_ip
+    type: object
   handlers.registerUpstreamRequest:
     properties:
       config_id:
@@ -199,9 +212,27 @@ definitions:
     required:
     - config_id
     type: object
+  handlers.upstreamProfileWriteRequest:
+    properties:
+      bindings:
+        items:
+          $ref: '#/definitions/models.UpstreamProfileBinding'
+        type: array
+      description:
+        type: string
+      name:
+        type: string
+    required:
+    - bindings
+    - name
+    type: object
   models.APIKey:
     properties:
       allowed_discovery_config_ids:
+        items:
+          type: string
+        type: array
+      allowed_upstream_profile_ids:
         items:
           type: string
         type: array
@@ -434,6 +465,34 @@ definitions:
       source_node_id:
         type: string
     type: object
+  models.RegisterUpstreamProfileResponse:
+    properties:
+      changed:
+        type: boolean
+      discovery_config_id:
+        type: string
+      dry_run:
+        type: boolean
+      mutate:
+        $ref: '#/definitions/models.MutateUpstreamsResponse'
+      propagate:
+        $ref: '#/definitions/models.PropagateConfigResponse'
+      source_node_id:
+        type: string
+      targets:
+        items:
+          $ref: '#/definitions/models.RegisterUpstreamProfileTarget'
+        type: array
+      upstream_profile_id:
+        type: string
+    type: object
+  models.RegisterUpstreamProfileTarget:
+    properties:
+      config_id:
+        type: string
+      dial:
+        type: string
+    type: object
   models.RegisterUpstreamResponse:
     properties:
       changed:
@@ -496,6 +555,32 @@ definitions:
         items:
           type: string
         type: array
+    type: object
+  models.UpstreamProfile:
+    properties:
+      bindings:
+        items:
+          type: object
+        type: array
+      created_at:
+        type: string
+      description:
+        type: string
+      discovery_config_id:
+        type: string
+      id:
+        type: string
+      name:
+        type: string
+      updated_at:
+        type: string
+    type: object
+  models.UpstreamProfileBinding:
+    properties:
+      config_id:
+        type: string
+      port:
+        type: integer
     type: object
   models.User:
     properties:
@@ -989,6 +1074,70 @@ paths:
       summary: List discovery group snapshots
       tags:
       - discovery
+  /api/v1/discovery/{id}/upstream-profiles:
+    get:
+      parameters:
+      - description: Discovery config ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List upstream profiles for a discovery group
+      tags:
+      - upstream-profiles
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Discovery config ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Profile payload
+        in: body
+        name: payload
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.upstreamProfileWriteRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/models.UpstreamProfile'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Create upstream profile
+      tags:
+      - upstream-profiles
   /api/v1/health:
     get:
       description: Returns service health status
@@ -1662,6 +1811,146 @@ paths:
       summary: Re-run snapshot discovery backfill
       tags:
       - admin
+  /api/v1/upstream-profiles/{id}:
+    delete:
+      parameters:
+      - description: Upstream profile ID
+        in: path
+        name: id
+        required: true
+        type: string
+      responses:
+        "204":
+          description: No Content
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Delete upstream profile
+      tags:
+      - upstream-profiles
+    get:
+      parameters:
+      - description: Upstream profile ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.UpstreamProfile'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get upstream profile
+      tags:
+      - upstream-profiles
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Upstream profile ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Profile payload
+        in: body
+        name: payload
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.upstreamProfileWriteRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.UpstreamProfile'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Update upstream profile
+      tags:
+      - upstream-profiles
+  /api/v1/upstream-profiles/{id}/register:
+    post:
+      consumes:
+      - application/json
+      description: Adds upstream dials for all bindings in the profile on the first
+        reachable Caddy node and propagates to peers. Authenticated via API key.
+      parameters:
+      - description: Upstream profile ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Registration payload
+        in: body
+        name: payload
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.registerUpstreamByProfileRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.RegisterUpstreamProfileResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "502":
+          description: Bad Gateway
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      security:
+      - APIKeyAuth: []
+      summary: Register upstream dials using an upstream profile
+      tags:
+      - upstream-profiles
   /api/v1/users:
     get:
       produces:

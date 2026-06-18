@@ -26,6 +26,7 @@ type RegisterUpstreamService struct {
 	caddy       *CaddyService
 	nodes       *repository.NodeRepository
 	discoveries *repository.DiscoveryRepository
+	profiles    *repository.UpstreamProfileRepository
 	db          *gorm.DB
 	locksMu     sync.Mutex
 	locks       map[uuid.UUID]*sync.Mutex
@@ -35,12 +36,14 @@ func NewRegisterUpstreamService(
 	caddy *CaddyService,
 	nodes *repository.NodeRepository,
 	discoveries *repository.DiscoveryRepository,
+	profiles *repository.UpstreamProfileRepository,
 	db *gorm.DB,
 ) *RegisterUpstreamService {
 	return &RegisterUpstreamService{
 		caddy:       caddy,
 		nodes:       nodes,
 		discoveries: discoveries,
+		profiles:    profiles,
 		db:          db,
 		locks:       make(map[uuid.UUID]*sync.Mutex),
 	}
@@ -56,10 +59,23 @@ type RegisterUpstreamInput struct {
 	RequestedBy       string
 }
 
+type RegisterUpstreamByProfileInput struct {
+	ProfileID   uuid.UUID
+	PrivateIP   string
+	DryRun      bool
+	RequestedBy string
+}
+
+type RegisterUpstreamTarget struct {
+	ConfigID string
+	Dial     string
+}
+
 type RegisterUpstreamResult struct {
 	DiscoveryConfigID uuid.UUID
 	SourceNodeID      uuid.UUID
 	Dial              string
+	Targets           []RegisterUpstreamTarget
 	Changed           bool
 	DryRun            bool
 	Mutate            *caddysvc.MutateUpstreamsResponse
@@ -81,36 +97,97 @@ func (s *RegisterUpstreamService) Register(ctx context.Context, in RegisterUpstr
 	if configID == "" {
 		return nil, caddysvc.ErrInvalidMutationPayload
 	}
+	return s.registerTargets(ctx, in.DiscoveryConfigID, []RegisterUpstreamTarget{{
+		ConfigID: configID,
+		Dial:     dial,
+	}}, in.DryRun, in.RequestedBy)
+}
 
+func (s *RegisterUpstreamService) GetProfile(ctx context.Context, profileID uuid.UUID) (*models.UpstreamProfile, error) {
+	profile, err := s.profiles.GetByID(ctx, profileID)
+	if err != nil {
+		if repository.IsNotFound(err) {
+			return nil, ErrUpstreamProfileNotFound
+		}
+		return nil, err
+	}
+	return profile, nil
+}
+
+func (s *RegisterUpstreamService) RegisterByProfile(ctx context.Context, in RegisterUpstreamByProfileInput) (*RegisterUpstreamResult, error) {
+	profile, err := s.GetProfile(ctx, in.ProfileID)
+	if err != nil {
+		return nil, err
+	}
+	ip := strings.TrimSpace(in.PrivateIP)
+	if ip == "" {
+		return nil, ErrInvalidRegisterDial
+	}
+	bindings, err := ParseBindings(profile.Bindings)
+	if err != nil {
+		return nil, err
+	}
+	targets := make([]RegisterUpstreamTarget, 0, len(bindings))
+	for _, b := range bindings {
+		targets = append(targets, RegisterUpstreamTarget{
+			ConfigID: b.ConfigID,
+			Dial:     fmt.Sprintf("%s:%d", ip, b.Port),
+		})
+	}
+	result, err := s.registerTargets(ctx, profile.DiscoveryConfigID, targets, in.DryRun, in.RequestedBy)
+	if err != nil {
+		return nil, err
+	}
+	result.Dial = ""
+	return result, nil
+}
+
+func (s *RegisterUpstreamService) registerTargets(
+	ctx context.Context,
+	discoveryConfigID uuid.UUID,
+	targets []RegisterUpstreamTarget,
+	dryRun bool,
+	requestedBy string,
+) (*RegisterUpstreamResult, error) {
+	if len(targets) == 0 {
+		return nil, caddysvc.ErrInvalidMutationPayload
+	}
 	var result *RegisterUpstreamResult
-	err = s.withDiscoveryLock(ctx, in.DiscoveryConfigID, func() error {
-		sourceID, err := s.selectReachableLeader(ctx, in.DiscoveryConfigID)
+	err := s.withDiscoveryLock(ctx, discoveryConfigID, func() error {
+		sourceID, err := s.selectReachableLeader(ctx, discoveryConfigID)
 		if err != nil {
 			return err
 		}
+		mutateTargets := make([]caddysvc.UpstreamMutationTarget, 0, len(targets))
+		for _, t := range targets {
+			mutateTargets = append(mutateTargets, caddysvc.UpstreamMutationTarget{
+				ConfigID: t.ConfigID,
+				AddDial:  t.Dial,
+			})
+		}
 		mutateResp, err := s.caddy.MutateUpstreams(ctx, sourceID, caddysvc.MutateUpstreamsRequest{
-			Targets: []caddysvc.UpstreamMutationTarget{{
-				ConfigID: configID,
-				AddDial:  dial,
-			}},
-			DryRun: in.DryRun,
-		}, in.RequestedBy)
+			Targets: mutateTargets,
+			DryRun:  dryRun,
+		}, requestedBy)
 		if err != nil {
 			return err
 		}
 		out := &RegisterUpstreamResult{
-			DiscoveryConfigID: in.DiscoveryConfigID,
+			DiscoveryConfigID: discoveryConfigID,
 			SourceNodeID:      sourceID,
-			Dial:              dial,
+			Targets:           append([]RegisterUpstreamTarget(nil), targets...),
 			Changed:           mutateResp.Changed,
-			DryRun:            in.DryRun,
+			DryRun:            dryRun,
 			Mutate:            mutateResp,
 		}
-		if in.DryRun {
+		if len(targets) == 1 {
+			out.Dial = targets[0].Dial
+		}
+		if dryRun {
 			result = out
 			return nil
 		}
-		propagateResp, err := s.caddy.PropagateToDiscoveryPeers(ctx, sourceID, in.RequestedBy)
+		propagateResp, err := s.caddy.PropagateToDiscoveryPeers(ctx, sourceID, requestedBy)
 		if err != nil {
 			return err
 		}

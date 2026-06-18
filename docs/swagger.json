@@ -750,6 +750,107 @@
                 }
             }
         },
+        "/api/v1/discovery/{id}/upstream-profiles": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "upstream-profiles"
+                ],
+                "summary": "List upstream profiles for a discovery group",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Discovery config ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "upstream-profiles"
+                ],
+                "summary": "Create upstream profile",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Discovery config ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Profile payload",
+                        "name": "payload",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handlers.upstreamProfileWriteRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/models.UpstreamProfile"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/health": {
             "get": {
                 "description": "Returns service health status",
@@ -1786,6 +1887,225 @@
                 }
             }
         },
+        "/api/v1/upstream-profiles/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "upstream-profiles"
+                ],
+                "summary": "Get upstream profile",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Upstream profile ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.UpstreamProfile"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "upstream-profiles"
+                ],
+                "summary": "Update upstream profile",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Upstream profile ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Profile payload",
+                        "name": "payload",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handlers.upstreamProfileWriteRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.UpstreamProfile"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "tags": [
+                    "upstream-profiles"
+                ],
+                "summary": "Delete upstream profile",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Upstream profile ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/upstream-profiles/{id}/register": {
+            "post": {
+                "security": [
+                    {
+                        "APIKeyAuth": []
+                    }
+                ],
+                "description": "Adds upstream dials for all bindings in the profile on the first reachable Caddy node and propagates to peers. Authenticated via API key.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "upstream-profiles"
+                ],
+                "summary": "Register upstream dials using an upstream profile",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Upstream profile ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Registration payload",
+                        "name": "payload",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handlers.registerUpstreamByProfileRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.RegisterUpstreamProfileResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorResponse"
+                        }
+                    },
+                    "502": {
+                        "description": "Bad Gateway",
+                        "schema": {
+                            "$ref": "#/definitions/models.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/users": {
             "get": {
                 "security": [
@@ -2025,6 +2345,12 @@
                         "type": "string"
                     }
                 },
+                "allowed_upstream_profile_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
                 "expires_at": {
                     "type": "string"
                 },
@@ -2212,6 +2538,20 @@
                 }
             }
         },
+        "handlers.registerUpstreamByProfileRequest": {
+            "type": "object",
+            "required": [
+                "private_ip"
+            ],
+            "properties": {
+                "dry_run": {
+                    "type": "boolean"
+                },
+                "private_ip": {
+                    "type": "string"
+                }
+            }
+        },
         "handlers.registerUpstreamRequest": {
             "type": "object",
             "required": [
@@ -2304,10 +2644,37 @@
                 }
             }
         },
+        "handlers.upstreamProfileWriteRequest": {
+            "type": "object",
+            "required": [
+                "bindings",
+                "name"
+            ],
+            "properties": {
+                "bindings": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.UpstreamProfileBinding"
+                    }
+                },
+                "description": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
         "models.APIKey": {
             "type": "object",
             "properties": {
                 "allowed_discovery_config_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "allowed_upstream_profile_ids": {
                     "type": "array",
                     "items": {
                         "type": "string"
@@ -2661,6 +3028,49 @@
                 }
             }
         },
+        "models.RegisterUpstreamProfileResponse": {
+            "type": "object",
+            "properties": {
+                "changed": {
+                    "type": "boolean"
+                },
+                "discovery_config_id": {
+                    "type": "string"
+                },
+                "dry_run": {
+                    "type": "boolean"
+                },
+                "mutate": {
+                    "$ref": "#/definitions/models.MutateUpstreamsResponse"
+                },
+                "propagate": {
+                    "$ref": "#/definitions/models.PropagateConfigResponse"
+                },
+                "source_node_id": {
+                    "type": "string"
+                },
+                "targets": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.RegisterUpstreamProfileTarget"
+                    }
+                },
+                "upstream_profile_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.RegisterUpstreamProfileTarget": {
+            "type": "object",
+            "properties": {
+                "config_id": {
+                    "type": "string"
+                },
+                "dial": {
+                    "type": "string"
+                }
+            }
+        },
         "models.RegisterUpstreamResponse": {
             "type": "object",
             "properties": {
@@ -2753,6 +3163,46 @@
                     "items": {
                         "type": "string"
                     }
+                }
+            }
+        },
+        "models.UpstreamProfile": {
+            "type": "object",
+            "properties": {
+                "bindings": {
+                    "type": "array",
+                    "items": {
+                        "type": "object"
+                    }
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "discovery_config_id": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.UpstreamProfileBinding": {
+            "type": "object",
+            "properties": {
+                "config_id": {
+                    "type": "string"
+                },
+                "port": {
+                    "type": "integer"
                 }
             }
         },
