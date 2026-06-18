@@ -28,6 +28,7 @@ type createAPIKeyRequest struct {
 	Scopes                    []string `json:"scopes" binding:"required" example:"register_upstream"`
 	AllowedDiscoveryConfigIDs []string `json:"allowed_discovery_config_ids" binding:"required"`
 	AllowedUpstreamProfileIDs []string `json:"allowed_upstream_profile_ids"`
+	AllowedDomainProfileIDs   []string `json:"allowed_domain_profile_ids"`
 	ExpiresAt                 *string  `json:"expires_at"`
 }
 
@@ -77,6 +78,11 @@ func (h *APIKeyHandler) Create(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "invalid allowed_upstream_profile_ids"})
 		return
 	}
+	domainProfileIDs, err := parseUUIDList(req.AllowedDomainProfileIDs)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "invalid allowed_domain_profile_ids"})
+		return
+	}
 	var expiresAt *time.Time
 	if req.ExpiresAt != nil && strings.TrimSpace(*req.ExpiresAt) != "" {
 		parsed, err := time.Parse(time.RFC3339, strings.TrimSpace(*req.ExpiresAt))
@@ -92,6 +98,7 @@ func (h *APIKeyHandler) Create(c *gin.Context) {
 		Scopes:                    req.Scopes,
 		AllowedDiscoveryConfigIDs: allowed,
 		AllowedUpstreamProfileIDs: profileIDs,
+		AllowedDomainProfileIDs:   domainProfileIDs,
 		ExpiresAt:                 expiresAt,
 	})
 	if err != nil {
@@ -99,7 +106,9 @@ func (h *APIKeyHandler) Create(c *gin.Context) {
 			errors.Is(err, services.ErrAPIKeyScopeRequired) ||
 			errors.Is(err, services.ErrAPIKeyDiscoveryEmpty) ||
 			errors.Is(err, services.ErrAPIKeyProfileNotFound) ||
-			errors.Is(err, services.ErrAPIKeyProfileDiscoveryMismatch) {
+			errors.Is(err, services.ErrAPIKeyDomainProfileNotFound) ||
+			errors.Is(err, services.ErrAPIKeyProfileDiscoveryMismatch) ||
+			errors.Is(err, services.ErrAPIKeyDomainProfileDiscoveryMismatch) {
 			c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: err.Error()})
 			return
 		}

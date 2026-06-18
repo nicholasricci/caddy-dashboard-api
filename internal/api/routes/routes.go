@@ -31,7 +31,9 @@ type Dependencies struct {
 	AdminHandler            *handlers.AdminHandler
 	APIKeyHandler           *handlers.APIKeyHandler
 	RegisterUpstreamHandler *handlers.RegisterUpstreamHandler
+	RegisterDomainHandler   *handlers.RegisterDomainHandler
 	UpstreamProfileHandler  *handlers.UpstreamProfileHandler
+	DomainProfileHandler    *handlers.DomainProfileHandler
 	APIKeyService           *services.APIKeyService
 }
 
@@ -96,6 +98,12 @@ func NewRouter(dep Dependencies) *gin.Engine {
 	admin.PUT("/upstream-profiles/:id", dep.UpstreamProfileHandler.Update)
 	admin.DELETE("/upstream-profiles/:id", dep.UpstreamProfileHandler.Delete)
 
+	admin.GET("/discovery/:id/domain-profiles", dep.DomainProfileHandler.ListByDiscovery)
+	admin.POST("/discovery/:id/domain-profiles", dep.DomainProfileHandler.Create)
+	admin.GET("/domain-profiles/:id", dep.DomainProfileHandler.Get)
+	admin.PUT("/domain-profiles/:id", dep.DomainProfileHandler.Update)
+	admin.DELETE("/domain-profiles/:id", dep.DomainProfileHandler.Delete)
+
 	admin.GET("/users", dep.UserHandler.List)
 	admin.GET("/users/:id", dep.UserHandler.Get)
 	admin.POST("/users", dep.UserHandler.Create)
@@ -115,6 +123,13 @@ func NewRouter(dep Dependencies) *gin.Engine {
 		m2m.Use(middleware.APIKeyAuthMiddleware(dep.APIKeyService))
 		m2m.POST("/discovery/:id/register-upstream", middleware.RateLimitByIP(registerLimiter), dep.RegisterUpstreamHandler.RegisterUpstream)
 		m2m.POST("/upstream-profiles/:id/register", middleware.RateLimitByIP(registerLimiter), dep.RegisterUpstreamHandler.RegisterUpstreamByProfile)
+	}
+	if dep.APIKeyService != nil && dep.RegisterDomainHandler != nil {
+		registerLimiter := middleware.NewLimiterStore(rate.Every(time.Second), 20)
+		m2m := api.Group("")
+		m2m.Use(middleware.APIKeyAuthMiddleware(dep.APIKeyService))
+		m2m.POST("/discovery/:id/register-domain", middleware.RateLimitByIP(registerLimiter), dep.RegisterDomainHandler.RegisterDomain)
+		m2m.POST("/domain-profiles/:id/register", middleware.RateLimitByIP(registerLimiter), dep.RegisterDomainHandler.RegisterDomainByProfile)
 	}
 
 	return r

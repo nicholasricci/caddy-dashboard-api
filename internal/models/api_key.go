@@ -10,12 +10,14 @@ import (
 
 const (
 	APIKeyScopeRegisterUpstream = "register_upstream"
+	APIKeyScopeRegisterDomain   = "register_domain"
 	APIKeyPrefix                = "cdk_live_"
 )
 
 // AllAPIKeyScopes lists scopes recognized by the API today (extensible).
 var AllAPIKeyScopes = []string{
 	APIKeyScopeRegisterUpstream,
+	APIKeyScopeRegisterDomain,
 }
 
 type APIKey struct {
@@ -26,6 +28,7 @@ type APIKey struct {
 	Scopes                    json.RawMessage `gorm:"type:json;not null" json:"scopes" swaggertype:"array,string"`
 	AllowedDiscoveryConfigIDs json.RawMessage `gorm:"type:json;not null" json:"allowed_discovery_config_ids" swaggertype:"array,string"`
 	AllowedUpstreamProfileIDs json.RawMessage `gorm:"type:json" json:"allowed_upstream_profile_ids,omitempty" swaggertype:"array,string"`
+	AllowedDomainProfileIDs   json.RawMessage `gorm:"type:json" json:"allowed_domain_profile_ids,omitempty" swaggertype:"array,string"`
 	ExpiresAt                 *time.Time      `json:"expires_at,omitempty"`
 	RevokedAt                 *time.Time      `json:"revoked_at,omitempty"`
 	LastUsedAt                *time.Time      `json:"last_used_at,omitempty"`

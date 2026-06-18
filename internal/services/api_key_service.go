@@ -14,18 +14,21 @@ import (
 )
 
 var (
-	ErrAPIKeyNotFound                 = errors.New("api key not found")
-	ErrAPIKeyInvalid                  = errors.New("invalid api key")
-	ErrAPIKeyRevoked                  = errors.New("api key revoked")
-	ErrAPIKeyExpired                  = errors.New("api key expired")
-	ErrAPIKeyNameRequired             = errors.New("api key name is required")
-	ErrAPIKeyScopeRequired            = errors.New("at least one scope is required")
-	ErrAPIKeyDiscoveryEmpty           = errors.New("at least one allowed discovery config id is required")
-	ErrAPIKeyForbidden                = errors.New("api key not authorized for discovery config")
-	ErrAPIKeyProfileForbidden         = errors.New("api key not authorized for upstream profile")
-	ErrAPIKeyProfileDiscoveryMismatch = errors.New("upstream profile discovery not in allowed discovery config ids")
-	ErrAPIKeyProfileNotFound          = errors.New("upstream profile not found")
-	ErrAPIKeyScopeMissing             = errors.New("api key missing required scope")
+	ErrAPIKeyNotFound                       = errors.New("api key not found")
+	ErrAPIKeyInvalid                        = errors.New("invalid api key")
+	ErrAPIKeyRevoked                        = errors.New("api key revoked")
+	ErrAPIKeyExpired                        = errors.New("api key expired")
+	ErrAPIKeyNameRequired                   = errors.New("api key name is required")
+	ErrAPIKeyScopeRequired                  = errors.New("at least one scope is required")
+	ErrAPIKeyDiscoveryEmpty                 = errors.New("at least one allowed discovery config id is required")
+	ErrAPIKeyForbidden                      = errors.New("api key not authorized for discovery config")
+	ErrAPIKeyProfileForbidden               = errors.New("api key not authorized for upstream profile")
+	ErrAPIKeyDomainProfileForbidden         = errors.New("api key not authorized for domain profile")
+	ErrAPIKeyProfileDiscoveryMismatch       = errors.New("upstream profile discovery not in allowed discovery config ids")
+	ErrAPIKeyDomainProfileDiscoveryMismatch = errors.New("domain profile discovery not in allowed discovery config ids")
+	ErrAPIKeyProfileNotFound                = errors.New("upstream profile not found")
+	ErrAPIKeyDomainProfileNotFound          = errors.New("domain profile not found")
+	ErrAPIKeyScopeMissing                   = errors.New("api key missing required scope")
 )
 
 // ValidatedAPIKey is attached to request context after successful API key auth.
@@ -35,15 +38,21 @@ type ValidatedAPIKey struct {
 	Scopes                    []string
 	AllowedDiscoveryConfigIDs []uuid.UUID
 	AllowedUpstreamProfileIDs []uuid.UUID
+	AllowedDomainProfileIDs   []uuid.UUID
 }
 
 type APIKeyService struct {
-	repo     *repository.APIKeyRepository
-	profiles *repository.UpstreamProfileRepository
+	repo             *repository.APIKeyRepository
+	upstreamProfiles *repository.UpstreamProfileRepository
+	domainProfiles   *repository.DomainProfileRepository
 }
 
-func NewAPIKeyService(repo *repository.APIKeyRepository, profiles *repository.UpstreamProfileRepository) *APIKeyService {
-	return &APIKeyService{repo: repo, profiles: profiles}
+func NewAPIKeyService(
+	repo *repository.APIKeyRepository,
+	upstreamProfiles *repository.UpstreamProfileRepository,
+	domainProfiles *repository.DomainProfileRepository,
+) *APIKeyService {
+	return &APIKeyService{repo: repo, upstreamProfiles: upstreamProfiles, domainProfiles: domainProfiles}
 }
 
 type CreateAPIKeyInput struct {
@@ -51,6 +60,7 @@ type CreateAPIKeyInput struct {
 	Scopes                    []string
 	AllowedDiscoveryConfigIDs []uuid.UUID
 	AllowedUpstreamProfileIDs []uuid.UUID
+	AllowedDomainProfileIDs   []uuid.UUID
 	ExpiresAt                 *time.Time
 }
 
@@ -83,7 +93,11 @@ func (s *APIKeyService) Create(ctx context.Context, in CreateAPIKeyInput) (*mode
 		return nil, ErrAPIKeyDiscoveryEmpty
 	}
 	profileIDs := uniqueUUIDs(in.AllowedUpstreamProfileIDs)
-	if err := s.validateAllowedProfiles(ctx, allowed, profileIDs); err != nil {
+	if err := s.validateAllowedUpstreamProfiles(ctx, allowed, profileIDs); err != nil {
+		return nil, err
+	}
+	domainProfileIDs := uniqueUUIDs(in.AllowedDomainProfileIDs)
+	if err := s.validateAllowedDomainProfiles(ctx, allowed, domainProfileIDs); err != nil {
 		return nil, err
 	}
 	scopesJSON, err := json.Marshal(scopes)
@@ -98,6 +112,10 @@ func (s *APIKeyService) Create(ctx context.Context, in CreateAPIKeyInput) (*mode
 	if err != nil {
 		return nil, err
 	}
+	domainProfilesJSON, err := json.Marshal(uuidStrings(domainProfileIDs))
+	if err != nil {
+		return nil, err
+	}
 	secret, hash, prefix, err := auth.GenerateAPIKeySecret()
 	if err != nil {
 		return nil, err
@@ -109,6 +127,7 @@ func (s *APIKeyService) Create(ctx context.Context, in CreateAPIKeyInput) (*mode
 		Scopes:                    scopesJSON,
 		AllowedDiscoveryConfigIDs: allowedJSON,
 		AllowedUpstreamProfileIDs: profilesJSON,
+		AllowedDomainProfileIDs:   domainProfilesJSON,
 		ExpiresAt:                 in.ExpiresAt,
 	}
 	if err := s.repo.Create(ctx, key); err != nil {
@@ -173,6 +192,11 @@ func (s *APIKeyService) Validate(ctx context.Context, plaintext string) (*Valida
 		return nil, err
 	}
 	profiles := parseUUIDSlice(profilesStr)
+	domainProfilesStr, err := parseStringSliceJSON(key.AllowedDomainProfileIDs)
+	if err != nil {
+		return nil, err
+	}
+	domainProfiles := parseUUIDSlice(domainProfilesStr)
 	_ = s.repo.TouchLastUsed(ctx, key.ID, now)
 	return &ValidatedAPIKey{
 		ID:                        key.ID,
@@ -180,6 +204,7 @@ func (s *APIKeyService) Validate(ctx context.Context, plaintext string) (*Valida
 		Scopes:                    scopes,
 		AllowedDiscoveryConfigIDs: allowed,
 		AllowedUpstreamProfileIDs: profiles,
+		AllowedDomainProfileIDs:   domainProfiles,
 	}, nil
 }
 
@@ -214,11 +239,27 @@ func (s *APIKeyService) AuthorizeUpstreamProfile(validated *ValidatedAPIKey, pro
 	return nil
 }
 
-func (s *APIKeyService) validateAllowedProfiles(ctx context.Context, allowedDiscoveries, profileIDs []uuid.UUID) error {
-	if len(profileIDs) == 0 || s.profiles == nil {
+func (s *APIKeyService) AuthorizeDomainProfile(validated *ValidatedAPIKey, profileID uuid.UUID, discoveryConfigID uuid.UUID, requiredScope string) error {
+	if validated == nil {
+		return ErrAPIKeyInvalid
+	}
+	if !containsString(validated.Scopes, requiredScope) {
+		return ErrAPIKeyScopeMissing
+	}
+	if !containsUUID(validated.AllowedDomainProfileIDs, profileID) {
+		return ErrAPIKeyDomainProfileForbidden
+	}
+	if !containsUUID(validated.AllowedDiscoveryConfigIDs, discoveryConfigID) {
+		return ErrAPIKeyForbidden
+	}
+	return nil
+}
+
+func (s *APIKeyService) validateAllowedUpstreamProfiles(ctx context.Context, allowedDiscoveries, profileIDs []uuid.UUID) error {
+	if len(profileIDs) == 0 || s.upstreamProfiles == nil {
 		return nil
 	}
-	profiles, err := s.profiles.GetByIDs(ctx, profileIDs)
+	profiles, err := s.upstreamProfiles.GetByIDs(ctx, profileIDs)
 	if err != nil {
 		return err
 	}
@@ -232,6 +273,29 @@ func (s *APIKeyService) validateAllowedProfiles(ctx context.Context, allowedDisc
 	for _, id := range profileIDs {
 		if _, ok := found[id]; !ok {
 			return ErrAPIKeyProfileNotFound
+		}
+	}
+	return nil
+}
+
+func (s *APIKeyService) validateAllowedDomainProfiles(ctx context.Context, allowedDiscoveries, profileIDs []uuid.UUID) error {
+	if len(profileIDs) == 0 || s.domainProfiles == nil {
+		return nil
+	}
+	profiles, err := s.domainProfiles.GetByIDs(ctx, profileIDs)
+	if err != nil {
+		return err
+	}
+	found := make(map[uuid.UUID]struct{}, len(profiles))
+	for _, p := range profiles {
+		found[p.ID] = struct{}{}
+		if !containsUUID(allowedDiscoveries, p.DiscoveryConfigID) {
+			return ErrAPIKeyDomainProfileDiscoveryMismatch
+		}
+	}
+	for _, id := range profileIDs {
+		if _, ok := found[id]; !ok {
+			return ErrAPIKeyDomainProfileNotFound
 		}
 	}
 	return nil

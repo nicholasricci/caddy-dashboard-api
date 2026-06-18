@@ -188,9 +188,12 @@ func main() {
 	auditSvc := services.NewAuditService(auditRepo)
 	apiKeyRepo := repository.NewAPIKeyRepository(db)
 	upstreamProfileRepo := repository.NewUpstreamProfileRepository(db)
-	apiKeySvc := services.NewAPIKeyService(apiKeyRepo, upstreamProfileRepo)
+	domainProfileRepo := repository.NewDomainProfileRepository(db)
+	apiKeySvc := services.NewAPIKeyService(apiKeyRepo, upstreamProfileRepo, domainProfileRepo)
 	upstreamProfileSvc := services.NewUpstreamProfileService(upstreamProfileRepo, discoveryRepo)
+	domainProfileSvc := services.NewDomainProfileService(domainProfileRepo, discoveryRepo)
 	registerUpstreamSvc := services.NewRegisterUpstreamService(caddySvc, nodeRepo, discoveryRepo, upstreamProfileRepo, db)
+	registerDomainSvc := services.NewRegisterDomainService(caddySvc, nodeRepo, discoveryRepo, domainProfileRepo, db)
 
 	authHandler := handlers.NewAuthHandler(authSvc, log)
 	healthHandler := handlers.NewHealthHandler(
@@ -210,7 +213,9 @@ func main() {
 	adminHandler := handlers.NewAdminHandler(snapshotRepo, auditSvc, log)
 	apiKeyHandler := handlers.NewAPIKeyHandler(apiKeySvc, auditSvc, log)
 	upstreamProfileHandler := handlers.NewUpstreamProfileHandler(upstreamProfileSvc, auditSvc, log)
+	domainProfileHandler := handlers.NewDomainProfileHandler(domainProfileSvc, auditSvc, log)
 	registerUpstreamHandler := handlers.NewRegisterUpstreamHandler(registerUpstreamSvc, apiKeySvc, auditSvc, log)
+	registerDomainHandler := handlers.NewRegisterDomainHandler(registerDomainSvc, apiKeySvc, auditSvc, log)
 
 	router := routes.NewRouter(routes.Dependencies{
 		Logger:                  log,
@@ -229,7 +234,9 @@ func main() {
 		AdminHandler:            adminHandler,
 		APIKeyHandler:           apiKeyHandler,
 		RegisterUpstreamHandler: registerUpstreamHandler,
+		RegisterDomainHandler:   registerDomainHandler,
 		UpstreamProfileHandler:  upstreamProfileHandler,
+		DomainProfileHandler:    domainProfileHandler,
 		APIKeyService:           apiKeySvc,
 	})
 
