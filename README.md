@@ -72,8 +72,8 @@ Admin operators can re-run legacy snapshot backfill on demand with `POST /api/v1
 
 For EC2 (or other automation) that must add upstream dials to a Caddy proxy cluster without admin JWT:
 
-1. **Create an API key** (admin JWT): `POST /api/v1/api-keys` with `scopes: ["register_upstream"]` and `allowed_discovery_config_ids` listing the target discovery group UUID(s). The plaintext secret (`cdk_live_…`) is returned **once**.
-2. **Register upstream** (API key): `POST /api/v1/discovery/{discovery_config_id}/register-upstream` with `Authorization: Bearer <api_key>` and body:
+1. **Create an API key** (admin JWT): `POST /api/v1/api-keys` with `scopes: ["register_upstream"]`, `allowed_discovery_config_ids` listing the target Caddy proxy discovery group UUID(s), and optionally `allowed_upstream_profile_ids` for profile-based registration. The plaintext secret (`cdk_live_…`) is returned **once**.
+2. **Register upstream (single handler)** (API key): `POST /api/v1/discovery/{discovery_config_id}/register-upstream` with `Authorization: Bearer <api_key>` and body:
 
 ```json
 {
@@ -85,7 +85,18 @@ For EC2 (or other automation) that must add upstream dials to a Caddy proxy clus
 
 The API picks the first reachable Caddy node in that discovery group, mutates upstreams, and propagates config to peers. See Swagger for the full response shape.
 
-3. **EC2 user-data**: [`scripts/ec2-register-upstream.sh`](scripts/ec2-register-upstream.sh) reads the instance private IP from IMDS and calls the endpoint above. Store the API key in AWS Secrets Manager (`API_KEY_SECRET_ARN`); set `DISCOVERY_CONFIG_ID`, `CONFIG_ID`, `UPSTREAM_PORT`, and `CADDY_DASHBOARD_URL` in the launch template.
+3. **EC2 user-data (single handler)**: [`scripts/ec2-register-upstream.sh`](scripts/ec2-register-upstream.sh) reads the instance private IP from IMDS and calls the endpoint above. Store the API key in AWS Secrets Manager (`API_KEY_SECRET_ARN`); set `DISCOVERY_CONFIG_ID`, `CONFIG_ID`, `UPSTREAM_PORT`, and `CADDY_DASHBOARD_URL` in the launch template.
+
+### Upstream profiles (multi-handler registration)
+
+When one instance must register on multiple Caddy `@id` handlers (e.g. HTTP on port 80 and WebSocket on 8080), define an **upstream profile** once and register by profile ID at boot:
+
+1. **Create profile** (admin JWT): `POST /api/v1/discovery/{discovery_config_id}/upstream-profiles` with `name` and `bindings` (`config_id` + `port` per handler). List/get/update/delete via `/api/v1/discovery/{id}/upstream-profiles` and `/api/v1/upstream-profiles/{id}`.
+2. **Create API key** with `allowed_upstream_profile_ids` including the profile UUID (profiles must belong to a discovery group listed in `allowed_discovery_config_ids`).
+3. **Register by profile** (API key): `POST /api/v1/upstream-profiles/{profile_id}/register` with body `{"private_ip": "10.0.1.42"}`. One atomic mutate + propagate applies all bindings.
+4. **EC2 user-data**: [`scripts/ec2-register-upstream-profile.sh`](scripts/ec2-register-upstream-profile.sh) — set `UPSTREAM_PROFILE_ID`, `CADDY_DASHBOARD_URL`, and API key env vars (same as single-handler script).
+
+The legacy single-handler `register-upstream` endpoint and script remain unchanged.
 
 Admin key management: `GET /api/v1/api-keys`, `POST /api/v1/api-keys`, `POST /api/v1/api-keys/{id}/revoke`, `DELETE /api/v1/api-keys/{id}`.
 
@@ -137,6 +148,7 @@ This integration is optional: if you do not run the `loki` profile, logging beha
 - Login/refresh endpoints are rate-limited by IP.
 - Caddy apply endpoint is rate-limited and has a larger request body limit.
 - `POST /api/v1/discovery/:id/register-upstream` is rate-limited by IP (M2M).
+- `POST /api/v1/upstream-profiles/:id/register` is rate-limited by IP (M2M).
 - Global request body limit applies to all routes by default.
 
 ## CI and release

@@ -2,6 +2,7 @@ package services_test
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -19,7 +20,7 @@ func testAPIKeyDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
 	}
-	if err := db.AutoMigrate(&models.APIKey{}); err != nil {
+	if err := db.AutoMigrate(&models.APIKey{}, &models.UpstreamProfile{}, &models.DiscoveryConfig{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	return db
@@ -27,7 +28,7 @@ func testAPIKeyDB(t *testing.T) *gorm.DB {
 
 func TestAPIKeyService_CreateValidateAuthorize(t *testing.T) {
 	db := testAPIKeyDB(t)
-	svc := services.NewAPIKeyService(repository.NewAPIKeyRepository(db))
+	svc := services.NewAPIKeyService(repository.NewAPIKeyRepository(db), repository.NewUpstreamProfileRepository(db))
 	discoveryID := uuid.New()
 
 	resp, err := svc.Create(context.Background(), services.CreateAPIKeyInput{
@@ -56,7 +57,7 @@ func TestAPIKeyService_CreateValidateAuthorize(t *testing.T) {
 
 func TestAPIKeyService_RevokedKeyRejected(t *testing.T) {
 	db := testAPIKeyDB(t)
-	svc := services.NewAPIKeyService(repository.NewAPIKeyRepository(db))
+	svc := services.NewAPIKeyService(repository.NewAPIKeyRepository(db), repository.NewUpstreamProfileRepository(db))
 	discoveryID := uuid.New()
 
 	resp, err := svc.Create(context.Background(), services.CreateAPIKeyInput{
@@ -82,7 +83,7 @@ func TestAPIKeyService_RevokedKeyRejected(t *testing.T) {
 
 func TestAPIKeyService_ExpiredKeyRejected(t *testing.T) {
 	db := testAPIKeyDB(t)
-	svc := services.NewAPIKeyService(repository.NewAPIKeyRepository(db))
+	svc := services.NewAPIKeyService(repository.NewAPIKeyRepository(db), repository.NewUpstreamProfileRepository(db))
 	past := time.Now().UTC().Add(-time.Hour)
 	resp, err := svc.Create(context.Background(), services.CreateAPIKeyInput{
 		Name:                      "expired",
@@ -95,5 +96,76 @@ func TestAPIKeyService_ExpiredKeyRejected(t *testing.T) {
 	}
 	if _, err := svc.Validate(context.Background(), resp.Secret); err == nil {
 		t.Fatal("expected expired error")
+	}
+}
+
+func TestAPIKeyService_AuthorizeUpstreamProfile(t *testing.T) {
+	db := testAPIKeyDB(t)
+	discoveryRepo := repository.NewDiscoveryRepository(db)
+	profileRepo := repository.NewUpstreamProfileRepository(db)
+	svc := services.NewAPIKeyService(repository.NewAPIKeyRepository(db), profileRepo)
+
+	discoveryID := uuid.New()
+	otherDiscovery := uuid.New()
+	_ = discoveryRepo.Create(context.Background(), &models.DiscoveryConfig{
+		ID: discoveryID, Name: "proxy", Method: models.DiscoveryMethodStaticIP, Region: "eu-west-1",
+	})
+	_ = discoveryRepo.Create(context.Background(), &models.DiscoveryConfig{
+		ID: otherDiscovery, Name: "other", Method: models.DiscoveryMethodStaticIP, Region: "eu-west-1",
+	})
+
+	bindings, _ := json.Marshal([]models.UpstreamProfileBinding{{ConfigID: "handler", Port: 80}})
+	profile := &models.UpstreamProfile{DiscoveryConfigID: discoveryID, Name: "app", Bindings: bindings}
+	if err := profileRepo.Create(context.Background(), profile); err != nil {
+		t.Fatalf("create profile: %v", err)
+	}
+
+	resp, err := svc.Create(context.Background(), services.CreateAPIKeyInput{
+		Name:                      "proj-profile",
+		Scopes:                    []string{models.APIKeyScopeRegisterUpstream},
+		AllowedDiscoveryConfigIDs: []uuid.UUID{discoveryID},
+		AllowedUpstreamProfileIDs: []uuid.UUID{profile.ID},
+	})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	validated, err := svc.Validate(context.Background(), resp.Secret)
+	if err != nil {
+		t.Fatalf("Validate: %v", err)
+	}
+	if err := svc.AuthorizeUpstreamProfile(validated, profile.ID, discoveryID, models.APIKeyScopeRegisterUpstream); err != nil {
+		t.Fatalf("AuthorizeUpstreamProfile allowed: %v", err)
+	}
+	if err := svc.AuthorizeUpstreamProfile(validated, uuid.New(), discoveryID, models.APIKeyScopeRegisterUpstream); err == nil {
+		t.Fatal("expected profile forbidden")
+	}
+	if err := svc.AuthorizeUpstreamProfile(validated, profile.ID, otherDiscovery, models.APIKeyScopeRegisterUpstream); err == nil {
+		t.Fatal("expected discovery forbidden")
+	}
+}
+
+func TestAPIKeyService_ProfileDiscoveryMismatchOnCreate(t *testing.T) {
+	db := testAPIKeyDB(t)
+	discoveryRepo := repository.NewDiscoveryRepository(db)
+	profileRepo := repository.NewUpstreamProfileRepository(db)
+	svc := services.NewAPIKeyService(repository.NewAPIKeyRepository(db), profileRepo)
+
+	discoveryID := uuid.New()
+	otherDiscovery := uuid.New()
+	_ = discoveryRepo.Create(context.Background(), &models.DiscoveryConfig{
+		ID: discoveryID, Name: "proxy", Method: models.DiscoveryMethodStaticIP, Region: "eu-west-1",
+	})
+	bindings, _ := json.Marshal([]models.UpstreamProfileBinding{{ConfigID: "handler", Port: 80}})
+	profile := &models.UpstreamProfile{DiscoveryConfigID: discoveryID, Name: "app", Bindings: bindings}
+	_ = profileRepo.Create(context.Background(), profile)
+
+	_, err := svc.Create(context.Background(), services.CreateAPIKeyInput{
+		Name:                      "bad-key",
+		Scopes:                    []string{models.APIKeyScopeRegisterUpstream},
+		AllowedDiscoveryConfigIDs: []uuid.UUID{otherDiscovery},
+		AllowedUpstreamProfileIDs: []uuid.UUID{profile.ID},
+	})
+	if err == nil {
+		t.Fatal("expected profile discovery mismatch")
 	}
 }

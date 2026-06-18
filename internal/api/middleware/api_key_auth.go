@@ -42,6 +42,7 @@ func APIKeyAuthMiddleware(apiKeys *services.APIKeyService) gin.HandlerFunc {
 		c.Set("api_key_name", validated.Name)
 		c.Set("api_key_scopes", validated.Scopes)
 		c.Set("api_key_allowed_discovery_ids", validated.AllowedDiscoveryConfigIDs)
+		c.Set("api_key_allowed_upstream_profile_ids", validated.AllowedUpstreamProfileIDs)
 		c.Set("auth_type", "api_key")
 		c.Next()
 	}

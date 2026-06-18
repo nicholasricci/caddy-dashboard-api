@@ -121,11 +121,14 @@ func (h *RegisterUpstreamHandler) validatedAPIKey(c *gin.Context) (*services.Val
 	scopeList, _ := scopes.([]string)
 	allowedRaw, _ := c.Get("api_key_allowed_discovery_ids")
 	allowed, _ := allowedRaw.([]uuid.UUID)
+	profilesRaw, _ := c.Get("api_key_allowed_upstream_profile_ids")
+	profiles, _ := profilesRaw.([]uuid.UUID)
 	return &services.ValidatedAPIKey{
 		ID:                        id,
 		Name:                      name,
 		Scopes:                    scopeList,
 		AllowedDiscoveryConfigIDs: allowed,
+		AllowedUpstreamProfileIDs: profiles,
 	}, nil
 }
 

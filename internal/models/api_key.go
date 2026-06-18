@@ -25,6 +25,7 @@ type APIKey struct {
 	KeyHash                   string          `gorm:"size:64;not null;uniqueIndex" json:"-"`
 	Scopes                    json.RawMessage `gorm:"type:json;not null" json:"scopes" swaggertype:"array,string"`
 	AllowedDiscoveryConfigIDs json.RawMessage `gorm:"type:json;not null" json:"allowed_discovery_config_ids" swaggertype:"array,string"`
+	AllowedUpstreamProfileIDs json.RawMessage `gorm:"type:json" json:"allowed_upstream_profile_ids,omitempty" swaggertype:"array,string"`
 	ExpiresAt                 *time.Time      `json:"expires_at,omitempty"`
 	RevokedAt                 *time.Time      `json:"revoked_at,omitempty"`
 	LastUsedAt                *time.Time      `json:"last_used_at,omitempty"`

@@ -28,7 +28,7 @@ Modulo Go: `github.com/nicholasricci/caddy-dashboard` · Go **1.26**.
 cmd/server/          # Entrypoint HTTP, wiring di config, DB, AWS, GCP/Azure, handler, router
 configs/             # config.yaml (server, auth, aws, gcp, azure, database, observability)
 docs/                # Swagger generato (swagger.json, swagger.yaml, docs.go) — non editare a mano
-internal/api/handlers/   # Handler Gin per auth, health, nodes, discovery, caddy, users, api-keys, register-upstream
+internal/api/handlers/   # Handler Gin per auth, health, nodes, discovery, caddy, users, api-keys, upstream-profiles, register-upstream
 internal/api/middleware/ # Auth JWT, API key M2M, RequireAdmin, CORS, request logger
 internal/api/routes/     # Registrazione route e gruppi protected/admin
 internal/auth/       # Servizio JWT, generazione/hash API key
@@ -74,7 +74,9 @@ Endpoint principali (dettaglio in [`internal/api/routes/routes.go`](internal/api
 - Solo admin JWT: `POST /api/v1/nodes/:id/config/mutate/upstreams`, `POST /api/v1/nodes/:id/config/propagate`.
 - Solo admin JWT: endpoint operativo `POST /api/v1/snapshots/backfill` per rilanciare on-demand il backfill `discovery_config_id` sugli snapshot legacy (idempotente, rate-limited).
 - Solo admin JWT: `GET/POST /api/v1/api-keys`, `POST /api/v1/api-keys/:id/revoke`, `DELETE /api/v1/api-keys/:id`.
+- Solo admin JWT: CRUD **upstream profile** — `GET/POST /api/v1/discovery/:id/upstream-profiles`, `GET/PUT/DELETE /api/v1/upstream-profiles/:id`.
 - **API key M2M** (scope `register_upstream`, discovery autorizzato): `POST /api/v1/discovery/:id/register-upstream` — aggiunge un dial upstream sul primo nodo Caddy raggiungibile del gruppo e propaga ai peer (lock per discovery group).
+- **API key M2M** (scope `register_upstream`, profilo in `allowed_upstream_profile_ids`): `POST /api/v1/upstream-profiles/:id/register` — applica tutti i binding del profilo in una mutate+propagate atomica.
 
 ## Dominio funzionale
 
@@ -82,8 +84,10 @@ Endpoint principali (dettaglio in [`internal/api/routes/routes.go`](internal/api
 - **Discovery (`DiscoveryConfig`)**: regole per trovare nodi (`aws_tag`, `aws_ssm`, `static_ip`, `gcp_labels`, `azure_tags`; `aws_cidr` non implementato). Metodi GCP/Azure richiedono credenziali cloud (ADC / DefaultAzureCredential) e `parameters` JSON documentati in Swagger.
 - **Snapshot**: versioni di configurazione Caddy persistite dopo sync/apply, con scope configurabile per `DiscoveryConfig` (`node` o `group`).
 - **Utenti**: username, ruolo, password hash; JWT emessi al login.
-- **API key (`APIKey`)**: nome progetto, `key_prefix`, `key_hash`, `scopes` (es. `register_upstream`), `allowed_discovery_config_ids`, lifecycle (`expires_at`, `revoked_at`, `last_used_at`). Secret mostrato solo alla creazione.
-- **Registrazione upstream EC2**: l'istanza app chiama `register-upstream` con `discovery_config_id` del **cluster Caddy proxy** (non del proprio ASG), più `config_id` (@id Caddy) e porta dal launch template; l'API non richiede l'UUID del nodo proxy. Script: [`scripts/ec2-register-upstream.sh`](scripts/ec2-register-upstream.sh).
+- **API key (`APIKey`)**: nome progetto, `key_prefix`, `key_hash`, `scopes` (es. `register_upstream`), `allowed_discovery_config_ids`, `allowed_upstream_profile_ids`, lifecycle (`expires_at`, `revoked_at`, `last_used_at`). Secret mostrato solo alla creazione.
+- **Upstream profile (`UpstreamProfile`)**: configurazione standard per registrazione M2M multi-handler; `bindings` JSON (`config_id` + `port` per ogni `@id` Caddy), legato a un `discovery_config_id` (cluster proxy).
+- **Registrazione upstream EC2 (singolo handler)**: l'istanza app chiama `register-upstream` con `discovery_config_id` del **cluster Caddy proxy** (non del proprio ASG), più `config_id` (@id Caddy) e porta dal launch template. Script: [`scripts/ec2-register-upstream.sh`](scripts/ec2-register-upstream.sh).
+- **Registrazione upstream EC2 (profilo)**: l'istanza passa `UPSTREAM_PROFILE_ID` + IP privata; l'API materializza tutti i dial definiti nel profilo. Script: [`scripts/ec2-register-upstream-profile.sh`](scripts/ec2-register-upstream-profile.sh).
 
 Operazioni Caddy lato macchina remota avvengono tramite il **dispatcher** (SSM, SSH, HTTP admin, GCP OS Config, Azure Run Command) a seconda del `transport` del nodo. Le letture live e i metadati derivati (`@id`, upstream) sono cache-ati in memoria per nodo con TTL configurabile (`caddy.cache_ttl` / `CADDY_CACHE_TTL`) e invalidazione su mutazioni (`apply`, `sync`, `reload`).
 
@@ -102,7 +106,7 @@ make mcp-build    # build server MCP in tools/mcp-server
 
 ## Server MCP (solo sviluppo)
 
-Sotto [`tools/mcp-server/`](tools/mcp-server/) c’è un server **MCP** per integrare Cursor con lo Swagger e chiamate HTTP **limitate** (GET su `/api/v1/*` + POST solo login/refresh/logout/backfill, denylist su path pericolosi incluso `register-upstream`, gate `CADDY_MCP_DEV=1`). **Non** espone mutazioni Caddy né `register-upstream` (M2M only). **Non** è parte del deploy di produzione. Istruzioni: [`tools/mcp-server/README.md`](tools/mcp-server/README.md).
+Sotto [`tools/mcp-server/`](tools/mcp-server/) c’è un server **MCP** per integrare Cursor con lo Swagger e chiamate HTTP **limitate** (GET su `/api/v1/*` + POST solo login/refresh/logout/backfill, denylist su path pericolosi incluso `register-upstream` e `upstream-profiles/.../register`, gate `CADDY_MCP_DEV=1`). **Non** espone mutazioni Caddy né registrazione upstream M2M. **Non** è parte del deploy di produzione. Istruzioni: [`tools/mcp-server/README.md`](tools/mcp-server/README.md).
 
 ## Convenzioni per modifiche al codice
 
