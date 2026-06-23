@@ -23,8 +23,10 @@ import (
 	"github.com/nicholasricci/caddy-dashboard/internal/database"
 	"github.com/nicholasricci/caddy-dashboard/internal/models"
 	"github.com/nicholasricci/caddy-dashboard/internal/repository"
+	"github.com/nicholasricci/caddy-dashboard/internal/scheduler"
 	"github.com/nicholasricci/caddy-dashboard/internal/secrets"
 	"github.com/nicholasricci/caddy-dashboard/internal/services"
+	"github.com/nicholasricci/caddy-dashboard/internal/tasks"
 	"github.com/nicholasricci/caddy-dashboard/pkg/logger"
 	"go.uber.org/zap"
 	"gorm.io/gorm"
@@ -195,6 +197,32 @@ func main() {
 	registerUpstreamSvc := services.NewRegisterUpstreamService(caddySvc, nodeRepo, discoveryRepo, upstreamProfileRepo, db)
 	registerDomainSvc := services.NewRegisterDomainService(caddySvc, nodeRepo, discoveryRepo, domainProfileRepo, db)
 
+	schedulerRepo := repository.NewScheduledTaskRepository(db)
+	schedulerLogRepo := repository.NewScheduledTaskLogRepository(db)
+
+	taskRunners := map[string]tasks.TaskRunner{
+		models.ScheduledTaskTypeDiscoveryRun:        tasks.NewDiscoveryRunTask(discoverySvc, discoveryRepo),
+		models.ScheduledTaskTypeTokenCleanup:        tasks.NewTokenCleanupTask(authSvc),
+		models.ScheduledTaskTypeNodeHealthcheck:     tasks.NewNodeHealthcheckTask(nodeRepo, internalCaddySvc),
+		models.ScheduledTaskTypeUpstreamHealthcheck: tasks.NewUpstreamHealthcheckTask(internalCaddySvc, nodeRepo, discoveryRepo, auditSvc),
+	}
+
+	schedulerEngine := scheduler.NewEngine(scheduler.EngineDeps{
+		Repo:    schedulerRepo,
+		LogRepo: schedulerLogRepo,
+		Config:  cfg.Scheduler,
+		Logger:  log,
+		DB:      db,
+		Runners: taskRunners,
+	})
+
+	if cfg.Scheduler.Enabled {
+		if err := schedulerEngine.Start(ctx); err != nil {
+			log.Fatal("scheduler start failed", zap.Error(err))
+		}
+		log.Info("scheduler engine started")
+	}
+
 	authHandler := handlers.NewAuthHandler(authSvc, log)
 	healthHandler := handlers.NewHealthHandler(
 		func(ctx context.Context) error {
@@ -216,6 +244,7 @@ func main() {
 	domainProfileHandler := handlers.NewDomainProfileHandler(domainProfileSvc, auditSvc, log)
 	registerUpstreamHandler := handlers.NewRegisterUpstreamHandler(registerUpstreamSvc, apiKeySvc, auditSvc, log)
 	registerDomainHandler := handlers.NewRegisterDomainHandler(registerDomainSvc, apiKeySvc, auditSvc, log)
+	scheduledTaskHandler := handlers.NewScheduledTaskHandler(schedulerRepo, schedulerLogRepo, schedulerEngine, taskRunners, auditSvc, log)
 
 	router := routes.NewRouter(routes.Dependencies{
 		Logger:                  log,
@@ -233,6 +262,7 @@ func main() {
 		AuditHandler:            auditHandler,
 		AdminHandler:            adminHandler,
 		APIKeyHandler:           apiKeyHandler,
+		ScheduledTaskHandler:    scheduledTaskHandler,
 		RegisterUpstreamHandler: registerUpstreamHandler,
 		RegisterDomainHandler:   registerDomainHandler,
 		UpstreamProfileHandler:  upstreamProfileHandler,
@@ -257,7 +287,7 @@ func main() {
 		}
 	}()
 
-	waitForShutdown(log, srv, cfg.Server.ShutdownTimeout)
+	waitForShutdown(log, srv, cfg.Server.ShutdownTimeout, schedulerEngine)
 }
 
 func closeDB(log *zap.Logger, db *gorm.DB) {
@@ -271,18 +301,27 @@ func closeDB(log *zap.Logger, db *gorm.DB) {
 	}
 }
 
-func waitForShutdown(log *zap.Logger, srv *http.Server, timeout time.Duration) {
+func waitForShutdown(log *zap.Logger, srv *http.Server, timeout time.Duration, sch *scheduler.Engine) {
 	if timeout <= 0 {
 		timeout = 15 * time.Second
 	}
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, os.Interrupt)
 	<-quit
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	log.Info("shutting down")
+
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	if err := srv.Shutdown(ctx); err != nil {
-		log.Error("graceful shutdown failed", zap.Error(err))
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		log.Error("http server shutdown failed", zap.Error(err))
 	}
+
+	if sch != nil {
+		if err := sch.Stop(shutdownCtx); err != nil {
+			log.Error("scheduler shutdown failed", zap.Error(err))
+		}
+	}
+
 	log.Info("server stopped")
 }

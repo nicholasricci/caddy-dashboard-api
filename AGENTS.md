@@ -19,6 +19,7 @@ Modulo Go: `github.com/nicholasricci/caddy-dashboard` · Go **1.26**.
 | GCP / Azure | OS Config (guest policy) e Azure Run Command per esecuzione remota opzionale; credenziali via ADC / DefaultAzureCredential |
 | Config | Viper (`configs/config.yaml`) + variabili d’ambiente; `godotenv` carica `.env` in locale |
 | Log | Zap (`go.uber.org/zap`) |
+| Scheduler | `github.com/robfig/cron/v3`: task schedulati via cron expression con lock MySQL per multi-replica, per-task re-entrancy guard, tabelle `scheduled_tasks` e `scheduled_task_logs`, hot-reload su mutazioni admin |
 | API docs | Swaggo: annotazioni su handler, generazione in `docs/`; UI su `/swagger/index.html`, JSON su `/swagger/doc.json` |
 | Dev tooling | Server MCP opzionale in `tools/mcp-server/` (solo sviluppo, chiamate HTTP “sicure”) |
 
@@ -38,7 +39,9 @@ internal/config/     # Load configurazione (Viper + env)
 internal/database/   # Connessione GORM, AutoMigrate
 internal/models/     # Entità GORM (CaddyNode, DiscoveryConfig, CaddySnapshot, User, APIKey, …)
 internal/repository/ # Accesso dati
+internal/scheduler/  # Scheduler engine cron, task runner generico, lock MySQL
 internal/services/   # Logica di dominio (node, discovery, caddy, user, api_key, register_upstream, register_domain)
+internal/tasks/      # Task runner per scheduled tasks (discovery_run, token_cleanup, node_healthcheck, upstream_healthcheck)
 pkg/logger/          # Costruzione logger Zap
 scripts/             # Script operativi (es. ec2-register-upstream.sh per user-data EC2)
 tools/mcp-server/    # Server MCP Node/TS per Cursor (dev only)
@@ -46,8 +49,8 @@ tools/mcp-server/    # Server MCP Node/TS per Cursor (dev only)
 
 ## Configurazione
 
-- File principale: [`configs/config.yaml`](configs/config.yaml) (porta, `gin_mode`, CORS, TTL JWT, regioni AWS, cache Caddy, DSN DB, log level).
-- Variabili d’ambiente: vedi [`.env.example`](.env.example). Rilevanti: `SERVER_PORT`, `DB_*`, `AWS_PROFILE`, `AWS_REGIONS`, **`AWS_OPTIONAL`** (consente avvio senza regioni AWS), **`GCP_ENABLED`**, **`GCP_OSCONFIG_TIMEOUT`**, **`AZURE_ENABLED`**, **`AZURE_RUN_COMMAND_TIMEOUT`**, `CADDY_*` (cache, timeout SSH/HTTP admin, ecc.), `JWT_SECRET` (**obbligatorio**), `LOG_LEVEL`, `GIN_MODE`.
+- File principale: [`configs/config.yaml`](configs/config.yaml) (porta, `gin_mode`, CORS, TTL JWT, regioni AWS, cache Caddy, DSN DB, log level, scheduler).
+- Variabili d’ambiente: vedi [`.env.example`](.env.example). Rilevanti: `SERVER_PORT`, `DB_*`, `AWS_PROFILE`, `AWS_REGIONS`, **`AWS_OPTIONAL`** (consente avvio senza regioni AWS), **`GCP_ENABLED`**, **`GCP_OSCONFIG_TIMEOUT`**, **`AZURE_ENABLED`**, **`AZURE_RUN_COMMAND_TIMEOUT`**, `CADDY_*` (cache, timeout SSH/HTTP admin, ecc.), `JWT_SECRET` (**obbligatorio**), `LOG_LEVEL`, `GIN_MODE`, `SCHEDULER_ENABLED`, `SCHEDULER_LOG_RETENTION_DAYS`, `SCHEDULER_GLOBAL_TIMEOUT`.
 - Opzione sviluppo Loki/Grafana Cloud: con `docker compose --profile loki` e servizio Alloy (`docker/loki/alloy-config.alloy`) i log stdout JSON dell’API vengono spediti a Loki usando `LOKI_URL`, `LOKI_USER`, `LOKI_API_KEY`, `LOKI_TENANT_ID`, `LOKI_ENVIRONMENT`.
 - Viper usa prefisso `APP_` con sostituzione `.` → `_` per override (es. variabili annidate).
 - CORS: con `cors_allowed_origins` vuoto si usa `*` senza credentials; per una SPA su altra origine impostare esplicitamente (es. `http://localhost:4200`) in YAML.
@@ -74,6 +77,7 @@ Endpoint principali (dettaglio in [`internal/api/routes/routes.go`](internal/api
 - Solo admin JWT: `POST /api/v1/nodes/:id/config/mutate/domains`, `POST /api/v1/nodes/:id/config/mutate/upstreams`, `POST /api/v1/nodes/:id/config/propagate`.
 - Solo admin JWT: endpoint operativo `POST /api/v1/snapshots/backfill` per rilanciare on-demand il backfill `discovery_config_id` sugli snapshot legacy (idempotente, rate-limited).
 - Solo admin JWT: `GET/POST /api/v1/api-keys`, `POST /api/v1/api-keys/:id/revoke`, `DELETE /api/v1/api-keys/:id`.
+- Solo admin JWT: **scheduled tasks** — `GET/POST /api/v1/scheduled-tasks`, `GET/PUT/DELETE /api/v1/scheduled-tasks/:id`, `POST /api/v1/scheduled-tasks/:id/toggle`, `POST /api/v1/scheduled-tasks/:id/run-now`, `GET /api/v1/scheduled-tasks/:id/logs`. Creazione/modifica/cancellazione/toggle triggerano hot-reload dello scheduler engine. Task types supportati: `discovery_run`, `token_cleanup`, `node_healthcheck`, `upstream_healthcheck`.
 - Solo admin JWT: CRUD **upstream profile** — `GET/POST /api/v1/discovery/:id/upstream-profiles`, `GET/PUT/DELETE /api/v1/upstream-profiles/:id`.
 - Solo admin JWT: CRUD **domain profile** — `GET/POST /api/v1/discovery/:id/domain-profiles`, `GET/PUT/DELETE /api/v1/domain-profiles/:id`.
 - **API key M2M** (scope `register_upstream`, discovery autorizzato): `POST /api/v1/discovery/:id/register-upstream` — aggiunge un dial upstream sul primo nodo Caddy raggiungibile del gruppo e propaga ai peer (lock per discovery group).

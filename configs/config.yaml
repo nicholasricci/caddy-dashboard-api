@@ -61,5 +61,10 @@ database:
   connect_retries: 10
   connect_backoff: 500ms
 
+scheduler:
+  enabled: true
+  log_retention_days: 30
+  global_timeout: 30m
+
 observability:
   log_level: info

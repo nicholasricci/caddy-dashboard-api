@@ -21,6 +21,7 @@ type Config struct {
 	Database      DatabaseConfig      `mapstructure:"database"`
 	Discovery     DiscoveryConfig     `mapstructure:"discovery"`
 	Observability ObservabilityConfig `mapstructure:"observability"`
+	Scheduler     SchedulerConfig     `mapstructure:"scheduler"`
 }
 
 type ServerConfig struct {
@@ -94,6 +95,12 @@ type DatabaseConfig struct {
 type DiscoveryConfig struct {
 	DefaultTagKey   string `mapstructure:"default_tag_key"`
 	DefaultTagValue string `mapstructure:"default_tag_value"`
+}
+
+type SchedulerConfig struct {
+	Enabled          bool          `mapstructure:"enabled"`
+	LogRetentionDays int           `mapstructure:"log_retention_days"`
+	GlobalTimeout    time.Duration `mapstructure:"global_timeout"`
 }
 
 type ObservabilityConfig struct {
@@ -200,6 +207,14 @@ func Load() (*Config, error) {
 	_ = v.BindEnv("database.conn_max_idle_time", "DB_CONN_MAX_IDLE_TIME")
 	_ = v.BindEnv("database.connect_retries", "DB_CONNECT_RETRIES")
 	_ = v.BindEnv("database.connect_backoff", "DB_CONNECT_BACKOFF")
+
+	// Scheduler
+	v.SetDefault("scheduler.enabled", true)
+	v.SetDefault("scheduler.log_retention_days", 30)
+	v.SetDefault("scheduler.global_timeout", "30m")
+	_ = v.BindEnv("scheduler.enabled", "SCHEDULER_ENABLED")
+	_ = v.BindEnv("scheduler.log_retention_days", "SCHEDULER_LOG_RETENTION_DAYS")
+	_ = v.BindEnv("scheduler.global_timeout", "SCHEDULER_GLOBAL_TIMEOUT")
 
 	// Observability
 	v.SetDefault("observability.log_level", "info")

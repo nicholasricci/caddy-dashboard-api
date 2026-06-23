@@ -222,6 +222,11 @@ definitions:
     required:
     - config_id
     type: object
+  handlers.toggleScheduledTaskRequest:
+    properties:
+      enabled:
+        type: boolean
+    type: object
   handlers.updateNodeRequest:
     properties:
       instance_id:
@@ -425,6 +430,25 @@ definitions:
       updated_at:
         type: string
     type: object
+  models.CreateScheduledTaskInput:
+    properties:
+      config:
+        type: object
+      cron_expression:
+        type: string
+      description:
+        type: string
+      enabled:
+        type: boolean
+      name:
+        type: string
+      task_type:
+        type: string
+    required:
+    - cron_expression
+    - name
+    - task_type
+    type: object
   models.DiscoveryConfig:
     properties:
       created_at:
@@ -516,6 +540,25 @@ definitions:
   models.ErrorResponse:
     properties:
       error:
+        type: string
+    type: object
+  models.ListScheduledTaskLogsResponse:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/models.ScheduledTaskLog'
+        type: array
+    type: object
+  models.ListScheduledTasksResponse:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/models.ScheduledTask'
+        type: array
+    type: object
+  models.MessageResponse:
+    properties:
+      message:
         type: string
     type: object
   models.MutateDomainsResponse:
@@ -661,6 +704,52 @@ definitions:
       source_node_id:
         type: string
     type: object
+  models.ScheduledTask:
+    properties:
+      config:
+        type: object
+      created_at:
+        type: string
+      cron_expression:
+        type: string
+      description:
+        type: string
+      enabled:
+        type: boolean
+      id:
+        type: string
+      last_error:
+        type: string
+      last_run_at:
+        type: string
+      last_status:
+        type: string
+      name:
+        type: string
+      task_type:
+        type: string
+      updated_at:
+        type: string
+    type: object
+  models.ScheduledTaskLog:
+    properties:
+      created_at:
+        type: string
+      details:
+        type: object
+      error:
+        type: string
+      finished_at:
+        type: string
+      id:
+        type: string
+      scheduled_task_id:
+        type: string
+      started_at:
+        type: string
+      status:
+        type: string
+    type: object
   models.SnapshotScope:
     enum:
     - node
@@ -669,6 +758,21 @@ definitions:
     x-enum-varnames:
     - SnapshotScopeNode
     - SnapshotScopeGroup
+  models.UpdateScheduledTaskInput:
+    properties:
+      config:
+        type: object
+      cron_expression:
+        type: string
+      description:
+        type: string
+      enabled:
+        type: boolean
+      name:
+        type: string
+      task_type:
+        type: string
+    type: object
   models.UpstreamMutationDiff:
     properties:
       added:
@@ -2254,6 +2358,190 @@ paths:
       summary: Readiness check
       tags:
       - health
+  /api/v1/scheduled-tasks:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.ListScheduledTasksResponse'
+      security:
+      - BearerAuth: []
+      summary: List all scheduled tasks
+      tags:
+      - scheduler
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Task input
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.CreateScheduledTaskInput'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/models.ScheduledTask'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Create a new scheduled task
+      tags:
+      - scheduler
+  /api/v1/scheduled-tasks/{id}:
+    delete:
+      parameters:
+      - description: Task ID
+        in: path
+        name: id
+        required: true
+        type: string
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.MessageResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Delete a scheduled task
+      tags:
+      - scheduler
+    get:
+      parameters:
+      - description: Task ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.ScheduledTask'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get a scheduled task by ID
+      tags:
+      - scheduler
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Task ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Update input
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.UpdateScheduledTaskInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.ScheduledTask'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Update a scheduled task
+      tags:
+      - scheduler
+  /api/v1/scheduled-tasks/{id}/logs:
+    get:
+      parameters:
+      - description: Task ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.ListScheduledTaskLogsResponse'
+      security:
+      - BearerAuth: []
+      summary: List execution logs for a scheduled task
+      tags:
+      - scheduler
+  /api/v1/scheduled-tasks/{id}/run-now:
+    post:
+      parameters:
+      - description: Task ID
+        in: path
+        name: id
+        required: true
+        type: string
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.ScheduledTaskLog'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Execute a scheduled task immediately
+      tags:
+      - scheduler
+  /api/v1/scheduled-tasks/{id}/toggle:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Task ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Toggle payload
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.toggleScheduledTaskRequest'
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.MessageResponse'
+      security:
+      - BearerAuth: []
+      summary: Enable or disable a scheduled task
+      tags:
+      - scheduler
   /api/v1/snapshots/backfill:
     post:
       description: |-
