@@ -275,9 +275,7 @@ func (h *ScheduledTaskHandler) Toggle(c *gin.Context) {
 		return
 	}
 
-	var body struct {
-		Enabled bool `json:"enabled"`
-	}
+	var body toggleScheduledTaskRequest
 	if err := c.ShouldBindJSON(&body); err != nil {
 		c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: err.Error()})
 		return

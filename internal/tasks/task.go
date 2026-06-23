@@ -30,10 +30,6 @@ func FailedString(msg string) *TaskResult {
 	return &TaskResult{Status: "failed", Error: msg}
 }
 
-type durationMillis struct {
-	DurationMs int64 `json:"duration_ms"`
-}
-
 func durationMs(start time.Time) int64 {
 	return time.Since(start).Milliseconds()
 }
