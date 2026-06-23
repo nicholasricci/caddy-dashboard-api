@@ -88,6 +88,23 @@ func (e *AzureRunCommandExecutor) FetchConfig(ctx context.Context, t ExecTarget)
 	return executionResultFromAzure(cr), nil
 }
 
+func (e *AzureRunCommandExecutor) RunCommand(ctx context.Context, t ExecTarget, command string) (*ExecutionResult, error) {
+	if e == nil || e.runner == nil || t.Azure == nil {
+		return nil, ErrTransportNotConfigured
+	}
+	target := azurecloud.RunShellTarget{
+		SubscriptionID: t.Azure.SubscriptionID,
+		ResourceGroup:  t.Azure.ResourceGroup,
+		VMName:         t.Azure.VMName,
+		Timeout:        azureTimeout(t.Azure.TimeoutSeconds),
+	}
+	cr, err := e.runner.RunShellCommand(ctx, target, command)
+	if err != nil {
+		return nil, err
+	}
+	return executionResultFromAzure(cr), nil
+}
+
 func azureTimeout(sec int) time.Duration {
 	if sec <= 0 {
 		return 0

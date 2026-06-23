@@ -63,6 +63,10 @@ func (e *HTTPAdminExecutor) Reload(_ context.Context, _ ExecTarget) (*ExecutionR
 	return nil, ErrTransportUnsupportedOp
 }
 
+func (e *HTTPAdminExecutor) RunCommand(_ context.Context, _ ExecTarget, _ string) (*ExecutionResult, error) {
+	return nil, ErrTransportUnsupportedOp
+}
+
 func (e *HTTPAdminExecutor) FetchConfig(ctx context.Context, t ExecTarget) (*ExecutionResult, error) {
 	if e == nil || t.HTTP == nil {
 		return nil, ErrTransportNotConfigured

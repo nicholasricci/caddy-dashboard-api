@@ -74,6 +74,7 @@ type RemoteExecutor interface {
 	ApplyConfig(ctx context.Context, t ExecTarget, payload []byte) (*ExecutionResult, error)
 	Reload(ctx context.Context, t ExecTarget) (*ExecutionResult, error)
 	FetchConfig(ctx context.Context, t ExecTarget) (*ExecutionResult, error)
+	RunCommand(ctx context.Context, t ExecTarget, command string) (*ExecutionResult, error)
 }
 
 func executionSuccess(stdout string, meta map[string]string) *ExecutionResult {

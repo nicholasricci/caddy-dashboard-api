@@ -42,6 +42,12 @@ func (d *Dispatcher) FetchConfig(ctx context.Context, t ExecTarget) (*ExecutionR
 	})
 }
 
+func (d *Dispatcher) RunCommand(ctx context.Context, t ExecTarget, command string) (*ExecutionResult, error) {
+	return d.delegate(ctx, t, func(ctx context.Context, ex RemoteExecutor) (*ExecutionResult, error) {
+		return ex.RunCommand(ctx, t, command)
+	})
+}
+
 type execFn func(ctx context.Context, ex RemoteExecutor) (*ExecutionResult, error)
 
 func (d *Dispatcher) delegate(ctx context.Context, t ExecTarget, fn execFn) (*ExecutionResult, error) {
@@ -70,6 +76,9 @@ func (e *ErrRemoteExecutor) Reload(ctx context.Context, _ ExecTarget) (*Executio
 	return nil, e.err()
 }
 func (e *ErrRemoteExecutor) FetchConfig(ctx context.Context, _ ExecTarget) (*ExecutionResult, error) {
+	return nil, e.err()
+}
+func (e *ErrRemoteExecutor) RunCommand(ctx context.Context, _ ExecTarget, _ string) (*ExecutionResult, error) {
 	return nil, e.err()
 }
 func (e *ErrRemoteExecutor) err() error {

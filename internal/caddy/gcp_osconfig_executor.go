@@ -97,6 +97,26 @@ func (e *GCPOsConfigExecutor) FetchConfig(ctx context.Context, t ExecTarget) (*E
 	return executionResultFromGCP(cr), nil
 }
 
+func (e *GCPOsConfigExecutor) RunCommand(ctx context.Context, t ExecTarget, command string) (*ExecutionResult, error) {
+	if e == nil || e.runner == nil || t.GCP == nil {
+		return nil, ErrTransportNotConfigured
+	}
+	target := gcpcloud.RunShellTarget{
+		ProjectID:        t.GCP.ProjectID,
+		Zone:             t.GCP.Zone,
+		InstanceName:     t.GCP.InstanceName,
+		LabelKey:         t.GCP.LabelKey,
+		LabelValue:       t.GCP.LabelValue,
+		AssignmentPrefix: t.GCP.AssignmentPrefix,
+		Timeout:          gcpTimeout(t.GCP.TimeoutSeconds),
+	}
+	cr, err := e.runner.RunShellCommand(ctx, target, command)
+	if err != nil {
+		return nil, err
+	}
+	return executionResultFromGCP(cr), nil
+}
+
 func gcpTimeout(sec int) time.Duration {
 	if sec <= 0 {
 		return 0

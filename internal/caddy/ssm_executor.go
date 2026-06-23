@@ -86,6 +86,22 @@ func (e *SSMExecutor) FetchConfig(ctx context.Context, t ExecTarget) (*Execution
 	return executionResultFromAWSSSM(cr), nil
 }
 
+func (e *SSMExecutor) RunCommand(ctx context.Context, t ExecTarget, command string) (*ExecutionResult, error) {
+	if e == nil || e.ssm == nil {
+		return nil, ErrTransportNotConfigured
+	}
+	region := t.Node.RegionString()
+	id := instanceIDString(t.Node)
+	if region == "" || id == "" {
+		return nil, ErrTransportNotConfigured
+	}
+	cr, err := e.ssm.RunShellCommand(ctx, region, id, command)
+	if err != nil {
+		return nil, err
+	}
+	return executionResultFromAWSSSM(cr), nil
+}
+
 func instanceIDString(n *models.CaddyNode) string {
 	if n == nil || n.InstanceID == nil {
 		return ""

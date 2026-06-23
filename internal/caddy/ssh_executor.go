@@ -64,6 +64,13 @@ func (e *SSHExecutor) FetchConfig(ctx context.Context, t ExecTarget) (*Execution
 	return e.run(ctx, t, cmd, nil)
 }
 
+func (e *SSHExecutor) RunCommand(ctx context.Context, t ExecTarget, command string) (*ExecutionResult, error) {
+	if e == nil || t.SSH == nil || e.resolver == nil {
+		return nil, ErrTransportNotConfigured
+	}
+	return e.run(ctx, t, command, nil)
+}
+
 func (e *SSHExecutor) run(ctx context.Context, t ExecTarget, remoteCmd string, stdin []byte) (*ExecutionResult, error) {
 	if e.readDeadline > 0 {
 		var cancel context.CancelFunc
