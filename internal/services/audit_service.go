@@ -35,6 +35,6 @@ func (s *AuditService) Record(ctx context.Context, actor, action, resource, reso
 	})
 }
 
-func (s *AuditService) ListPaginated(ctx context.Context, limit, offset int) ([]models.AuditLog, int64, error) {
-	return s.repo.ListPaginated(ctx, limit, offset)
+func (s *AuditService) ListPaginated(ctx context.Context, filter models.AuditListFilter, limit, offset int) ([]models.AuditLog, int64, error) {
+	return s.repo.ListPaginated(ctx, filter, limit, offset)
 }

@@ -25,3 +25,17 @@ func (a *AuditLog) BeforeCreate(_ *gorm.DB) error {
 	}
 	return nil
 }
+
+type AuditListFilter struct {
+	Action     string
+	Resource   string
+	Actor      string
+	ResourceID string
+	From       *time.Time
+	To         *time.Time
+}
+
+type AuditTypesResponse struct {
+	Actions   []string `json:"actions"`
+	Resources []string `json:"resources"`
+}

@@ -109,6 +109,7 @@ func NewRouter(dep Dependencies) *gin.Engine {
 	admin.POST("/users", dep.UserHandler.Create)
 	admin.PUT("/users/:id", dep.UserHandler.Update)
 	admin.DELETE("/users/:id", dep.UserHandler.Delete)
+	admin.GET("/audit/types", dep.AuditHandler.ListTypes)
 	admin.GET("/audit", dep.AuditHandler.List)
 	admin.POST("/snapshots/backfill", middleware.RateLimitByIP(backfillLimiter), dep.AdminHandler.BackfillSnapshots)
 

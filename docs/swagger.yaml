@@ -330,6 +330,17 @@ definitions:
           $ref: '#/definitions/models.APIKey'
         type: array
     type: object
+  models.AuditTypesResponse:
+    properties:
+      actions:
+        items:
+          type: string
+        type: array
+      resources:
+        items:
+          type: string
+        type: array
+    type: object
   models.BackfillSnapshotsResponse:
     properties:
       duration_ms:
@@ -834,6 +845,39 @@ paths:
       - api-keys
   /api/v1/audit:
     get:
+      parameters:
+      - description: Filter by action (see GET /audit/types)
+        in: query
+        name: action
+        type: string
+      - description: Filter by resource (see GET /audit/types)
+        in: query
+        name: resource
+        type: string
+      - description: Filter by actor (exact match)
+        in: query
+        name: actor
+        type: string
+      - description: Filter by resource ID (exact match)
+        in: query
+        name: resource_id
+        type: string
+      - description: Include logs from this time (RFC3339)
+        in: query
+        name: from
+        type: string
+      - description: Include logs up to this time (RFC3339)
+        in: query
+        name: to
+        type: string
+      - description: Page size (default 20, max 100)
+        in: query
+        name: limit
+        type: integer
+      - description: Page offset (default 0)
+        in: query
+        name: offset
+        type: integer
       produces:
       - application/json
       responses:
@@ -842,6 +886,10 @@ paths:
           schema:
             additionalProperties: true
             type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
         "500":
           description: Internal Server Error
           schema:
@@ -849,6 +897,20 @@ paths:
       security:
       - BearerAuth: []
       summary: List audit logs
+      tags:
+      - audit
+  /api/v1/audit/types:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.AuditTypesResponse'
+      security:
+      - BearerAuth: []
+      summary: List allowed audit filter values
       tags:
       - audit
   /api/v1/auth/login:
