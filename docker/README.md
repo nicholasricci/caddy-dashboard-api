@@ -22,7 +22,7 @@ Con il container `api` avviato, ogni modifica ai file Go nel workspace viene ric
 
 ### Scheduled tasks
 
-Lo scheduler esegue task in background (`robfig/cron`) all'interno dello stesso processo API. Nessun container aggiuntivo necessario.
+Lo scheduler esegue task in background (`netresearch/go-cron`) all'interno dello stesso processo API. Nessun container aggiuntivo necessario.
 
 Task supportati:
 - `discovery_run` — esecuzione automatica periodica della discovery

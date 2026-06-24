@@ -7,11 +7,11 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	cron "github.com/netresearch/go-cron"
 	"github.com/nicholasricci/caddy-dashboard/internal/config"
 	"github.com/nicholasricci/caddy-dashboard/internal/models"
 	"github.com/nicholasricci/caddy-dashboard/internal/repository"
 	"github.com/nicholasricci/caddy-dashboard/internal/tasks"
-	"github.com/robfig/cron/v3"
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 )
@@ -54,7 +54,26 @@ func (e *Engine) Start(ctx context.Context) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
-	e.cron = cron.New(cron.WithLocation(time.UTC))
+	e.cron = cron.New(
+		cron.WithLocation(time.UTC),
+		cron.WithObservability(cron.ObservabilityHooks{
+			OnJobStart: func(id cron.EntryID, name string, scheduled time.Time) {
+				e.logger.Debug("job firing",
+					zap.String("entry", name),
+					zap.Time("scheduled", scheduled),
+				)
+			},
+			OnJobComplete: func(id cron.EntryID, name string, dur time.Duration, recovered any) {
+				if recovered != nil {
+					e.logger.Warn("job panicked",
+						zap.String("entry", name),
+						zap.Duration("dur", dur),
+						zap.Any("panic", recovered),
+					)
+				}
+			},
+		}),
+	)
 
 	if err := e.refreshLocked(ctx); err != nil {
 		return fmt.Errorf("initial task load: %w", err)
@@ -96,26 +115,26 @@ func (e *Engine) Refresh(ctx context.Context) error {
 }
 
 func (e *Engine) refreshLocked(ctx context.Context) error {
-	for taskID, entryID := range e.entries {
-		e.cron.Remove(entryID)
-		delete(e.entries, taskID)
-	}
-
 	tasks, err := e.repo.ListEnabled(ctx)
 	if err != nil {
 		return fmt.Errorf("list enabled tasks: %w", err)
 	}
 
+	currentIDs := make(map[string]bool)
 	for _, task := range tasks {
+		currentIDs[task.ID.String()] = true
 		task := task
 		runner, ok := e.runners[task.TaskType]
 		if !ok {
 			continue
 		}
 
-		entryID, err := e.cron.AddFunc(task.CronExpression, func() {
-			e.executeJob(task, runner)
-		})
+		entryID, err := e.cron.UpsertJob(task.CronExpression,
+			cron.FuncJobWithContext(func(ctx context.Context) {
+				e.executeJob(ctx, task, runner)
+			}),
+			cron.WithName(task.ID.String()),
+		)
 		if err != nil {
 			e.logger.Warn("invalid cron expression",
 				zap.String("task_id", task.ID.String()),
@@ -133,6 +152,13 @@ func (e *Engine) refreshLocked(ctx context.Context) error {
 		)
 	}
 
+	for taskID, entryID := range e.entries {
+		if !currentIDs[taskID.String()] {
+			e.cron.Remove(entryID)
+			delete(e.entries, taskID)
+		}
+	}
+
 	e.logger.Info("scheduler refresh complete",
 		zap.Int("active_tasks", len(e.entries)),
 	)
@@ -140,6 +166,10 @@ func (e *Engine) refreshLocked(ctx context.Context) error {
 }
 
 func (e *Engine) RunNow(ctx context.Context, taskID uuid.UUID) error {
+	if entry := e.cron.EntryByName(taskID.String()); entry.Valid() && !entry.Paused {
+		return e.cron.TriggerEntryByName(taskID.String())
+	}
+
 	task, err := e.repo.GetByID(ctx, taskID)
 	if err != nil {
 		return fmt.Errorf("get task: %w", err)
@@ -150,11 +180,11 @@ func (e *Engine) RunNow(ctx context.Context, taskID uuid.UUID) error {
 		return fmt.Errorf("unknown task type: %s", task.TaskType)
 	}
 
-	e.executeJob(*task, runner)
+	e.executeJob(context.Background(), *task, runner)
 	return nil
 }
 
-func (e *Engine) executeJob(task models.ScheduledTask, runner tasks.TaskRunner) {
+func (e *Engine) executeJob(ctx context.Context, task models.ScheduledTask, runner tasks.TaskRunner) {
 	lock := e.getTaskLock(task.ID)
 	if !lock.TryLock() {
 		e.logger.Warn("task already running, skipping",
@@ -164,8 +194,6 @@ func (e *Engine) executeJob(task models.ScheduledTask, runner tasks.TaskRunner) 
 		return
 	}
 	defer lock.Unlock()
-
-	ctx := context.Background()
 
 	taskCtx, cancel := context.WithTimeout(ctx, e.cfg.GlobalTimeout)
 	defer cancel()

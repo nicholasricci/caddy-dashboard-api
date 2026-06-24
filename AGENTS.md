@@ -19,7 +19,7 @@ Modulo Go: `github.com/nicholasricci/caddy-dashboard` · Go **1.26**.
 | GCP / Azure | OS Config (guest policy) e Azure Run Command per esecuzione remota opzionale; credenziali via ADC / DefaultAzureCredential |
 | Config | Viper (`configs/config.yaml`) + variabili d’ambiente; `godotenv` carica `.env` in locale |
 | Log | Zap (`go.uber.org/zap`) |
-| Scheduler | `github.com/robfig/cron/v3`: task schedulati via cron expression con lock MySQL per multi-replica, per-task re-entrancy guard, tabelle `scheduled_tasks` e `scheduled_task_logs`, hot-reload su mutazioni admin |
+| Scheduler | `github.com/netresearch/go-cron`: task schedulati via cron expression con lock MySQL per multi-replica, per-task re-entrancy guard, tabelle `scheduled_tasks` e `scheduled_task_logs`, hot-reload su mutazioni admin, per-entry context, UpsertJob per refresh atomico, TriggerEntryByName |
 | API docs | Swaggo: annotazioni su handler, generazione in `docs/`; UI su `/swagger/index.html`, JSON su `/swagger/doc.json` |
 | Dev tooling | Server MCP opzionale in `tools/mcp-server/` (solo sviluppo, chiamate HTTP “sicure”) |
 
