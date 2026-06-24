@@ -225,6 +225,24 @@ func buildHostMap(configByID map[string]json.RawMessage) map[string][]string {
 	return out
 }
 
+func (s *Service) RunRemoteCommand(ctx context.Context, nodeID uuid.UUID, command string) (*ExecutionResult, error) {
+	node, err := s.nodes.GetByID(ctx, nodeID)
+	if err != nil {
+		if repository.IsNotFound(err) {
+			return nil, models.ErrNodeNotFound
+		}
+		return nil, err
+	}
+	if node.EffectiveTransport() == models.TransportInventoryOnly {
+		return nil, ErrTransportUnsupportedOp
+	}
+	target, err := BuildExecTarget(node)
+	if err != nil {
+		return nil, err
+	}
+	return s.executor.RunCommand(ctx, target, command)
+}
+
 func (s *Service) ApplyConfig(ctx context.Context, nodeID uuid.UUID, payload []byte, requestedBy string) error {
 	node, err := s.nodes.GetByID(ctx, nodeID)
 	if err != nil {

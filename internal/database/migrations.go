@@ -16,5 +16,7 @@ func AutoMigrate(db *gorm.DB) error {
 		&models.APIKey{},
 		&models.UpstreamProfile{},
 		&models.DomainProfile{},
+		&models.ScheduledTask{},
+		&models.ScheduledTaskLog{},
 	)
 }

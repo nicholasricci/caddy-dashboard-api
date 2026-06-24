@@ -20,6 +20,25 @@ docker compose up --build
 
 Con il container `api` avviato, ogni modifica ai file Go nel workspace viene ricompilata e riavviata automaticamente da `air`.
 
+### Scheduled tasks
+
+Lo scheduler esegue task in background (`netresearch/go-cron`) all'interno dello stesso processo API. Nessun container aggiuntivo necessario.
+
+Task supportati:
+- `discovery_run` — esecuzione automatica periodica della discovery
+- `token_cleanup` — pulizia refresh token scaduti
+- `node_healthcheck` — verifica raggiungibilità nodi Caddy via dispatcher
+- `upstream_healthcheck` — TCP health check degli upstream, rimozione automatica di quelli non funzionanti
+
+Configurabili via env:
+```bash
+SCHEDULER_ENABLED=true
+SCHEDULER_LOG_RETENTION_DAYS=30
+SCHEDULER_GLOBAL_TIMEOUT=30m
+```
+
+Admin API endpoint: `POST /api/v1/scheduled-tasks/:id/run-now` per esecuzione manuale on-demand.
+
 ## Opzione Loki (Grafana Cloud) con Alloy
 
 Il servizio `alloy` in `docker-compose.yml` e' opzionale (profile `loki`) e spedisce i log JSON del container `api` verso Loki/Grafana Cloud.

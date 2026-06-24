@@ -30,6 +30,7 @@ type Dependencies struct {
 	AuditHandler            *handlers.AuditHandler
 	AdminHandler            *handlers.AdminHandler
 	APIKeyHandler           *handlers.APIKeyHandler
+	ScheduledTaskHandler    *handlers.ScheduledTaskHandler
 	RegisterUpstreamHandler *handlers.RegisterUpstreamHandler
 	RegisterDomainHandler   *handlers.RegisterDomainHandler
 	UpstreamProfileHandler  *handlers.UpstreamProfileHandler
@@ -112,6 +113,15 @@ func NewRouter(dep Dependencies) *gin.Engine {
 	admin.GET("/audit/types", dep.AuditHandler.ListTypes)
 	admin.GET("/audit", dep.AuditHandler.List)
 	admin.POST("/snapshots/backfill", middleware.RateLimitByIP(backfillLimiter), dep.AdminHandler.BackfillSnapshots)
+
+	admin.GET("/scheduled-tasks", dep.ScheduledTaskHandler.List)
+	admin.POST("/scheduled-tasks", dep.ScheduledTaskHandler.Create)
+	admin.GET("/scheduled-tasks/:id", dep.ScheduledTaskHandler.Get)
+	admin.PUT("/scheduled-tasks/:id", dep.ScheduledTaskHandler.Update)
+	admin.DELETE("/scheduled-tasks/:id", dep.ScheduledTaskHandler.Delete)
+	admin.POST("/scheduled-tasks/:id/toggle", dep.ScheduledTaskHandler.Toggle)
+	admin.POST("/scheduled-tasks/:id/run-now", dep.ScheduledTaskHandler.RunNow)
+	admin.GET("/scheduled-tasks/:id/logs", dep.ScheduledTaskHandler.ListLogs)
 
 	admin.GET("/api-keys", dep.APIKeyHandler.List)
 	admin.POST("/api-keys", dep.APIKeyHandler.Create)

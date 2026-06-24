@@ -82,6 +82,10 @@ func (f *fakeExecutor) FetchConfig(_ context.Context, _ ExecTarget) (*ExecutionR
 	return &result, nil
 }
 
+func (f *fakeExecutor) RunCommand(_ context.Context, _ ExecTarget, command string) (*ExecutionResult, error) {
+	return &ExecutionResult{Status: ExecStatusSuccess, Stdout: command}, nil
+}
+
 func TestService_GetLiveConfig_NodeNotFound(t *testing.T) {
 	svc := NewService(&fakeNodeLoader{err: gorm.ErrRecordNotFound}, &fakeDiscoveryLoader{}, nil, nil)
 	_, err := svc.GetLiveConfig(context.Background(), uuid.New())
