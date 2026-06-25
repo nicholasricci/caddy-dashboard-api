@@ -3,6 +3,7 @@ package handlers
 import (
 	"errors"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -375,7 +376,14 @@ func (h *ScheduledTaskHandler) RunNow(c *gin.Context) {
 // @Tags scheduler
 // @Produce json
 // @Param id path string true "Task ID"
+// @Param status query string false "Filter by status (running|success|failed)"
+// @Param from query string false "Include logs started at or after (RFC3339)"
+// @Param to query string false "Include logs started at or before (RFC3339)"
+// @Param limit query int false "Page size (default 20, max 100)"
+// @Param offset query int false "Page offset (default 0)"
 // @Success 200 {object} models.ListScheduledTaskLogsResponse
+// @Failure 400 {object} models.ErrorResponse
+// @Failure 404 {object} models.ErrorResponse
 // @Security BearerAuth
 // @Router /api/v1/scheduled-tasks/{id}/logs [get]
 func (h *ScheduledTaskHandler) ListLogs(c *gin.Context) {
@@ -385,7 +393,24 @@ func (h *ScheduledTaskHandler) ListLogs(c *gin.Context) {
 		return
 	}
 
-	logs, err := h.logRepo.ListByTaskID(c.Request.Context(), id)
+	if _, err := h.repo.GetByID(c.Request.Context(), id); err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			c.JSON(http.StatusNotFound, models.ErrorResponse{Error: "task not found"})
+			return
+		}
+		logRequestError(h.logger, c, "get scheduled task failed", err)
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "failed to get task"})
+		return
+	}
+
+	filter, err := parseScheduledTaskLogListFilter(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: err.Error()})
+		return
+	}
+
+	limit, offset := parseLimitOffset(c)
+	logs, total, err := h.logRepo.ListByTaskIDPaginated(c.Request.Context(), id, filter, limit, offset)
 	if err != nil {
 		logRequestError(h.logger, c, "list task logs failed", err)
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "failed to list logs"})
@@ -394,7 +419,43 @@ func (h *ScheduledTaskHandler) ListLogs(c *gin.Context) {
 	if logs == nil {
 		logs = []models.ScheduledTaskLog{}
 	}
-	c.JSON(http.StatusOK, models.ListScheduledTaskLogsResponse{Items: logs})
+	c.JSON(http.StatusOK, models.ListScheduledTaskLogsResponse{
+		Items: logs,
+		Meta:  models.PaginationMeta{Total: total, Limit: limit, Offset: offset},
+	})
+}
+
+func parseScheduledTaskLogListFilter(c *gin.Context) (models.ScheduledTaskLogListFilter, error) {
+	var filter models.ScheduledTaskLogListFilter
+
+	if v := strings.TrimSpace(c.Query("status")); v != "" {
+		if !models.IsValidScheduledTaskLogStatus(v) {
+			return filter, errors.New("invalid status")
+		}
+		filter.Status = v
+	}
+
+	fromRaw := strings.TrimSpace(c.Query("from"))
+	toRaw := strings.TrimSpace(c.Query("to"))
+	if fromRaw != "" {
+		from, err := time.Parse(time.RFC3339, fromRaw)
+		if err != nil {
+			return filter, errors.New("invalid from: expected RFC3339 timestamp")
+		}
+		filter.From = &from
+	}
+	if toRaw != "" {
+		to, err := time.Parse(time.RFC3339, toRaw)
+		if err != nil {
+			return filter, errors.New("invalid to: expected RFC3339 timestamp")
+		}
+		filter.To = &to
+	}
+	if filter.From != nil && filter.To != nil && filter.From.After(*filter.To) {
+		return filter, errors.New("from must be before or equal to to")
+	}
+
+	return filter, nil
 }
 
 var _ = (*ScheduledTaskHandler)(nil)

@@ -26,6 +26,21 @@ var AllScheduledTaskTypes = []string{
 	ScheduledTaskTypeUpstreamHealthcheck,
 }
 
+var AllScheduledTaskLogStatuses = []string{
+	ScheduledTaskStatusRunning,
+	ScheduledTaskStatusSuccess,
+	ScheduledTaskStatusFailed,
+}
+
+func IsValidScheduledTaskLogStatus(s string) bool {
+	switch s {
+	case ScheduledTaskStatusRunning, ScheduledTaskStatusSuccess, ScheduledTaskStatusFailed:
+		return true
+	default:
+		return false
+	}
+}
+
 type ScheduledTask struct {
 	ID             uuid.UUID       `gorm:"type:char(36);primaryKey" json:"id"`
 	Name           string          `gorm:"size:120;not null;uniqueIndex" json:"name"`
@@ -51,8 +66,8 @@ func (t *ScheduledTask) BeforeCreate(_ *gorm.DB) error {
 
 type ScheduledTaskLog struct {
 	ID              uuid.UUID       `gorm:"type:char(36);primaryKey" json:"id"`
-	ScheduledTaskID uuid.UUID       `gorm:"index;not null" json:"scheduled_task_id"`
-	StartedAt       time.Time       `gorm:"not null" json:"started_at"`
+	ScheduledTaskID uuid.UUID       `gorm:"index:idx_task_log_task_started,priority:1;not null" json:"scheduled_task_id"`
+	StartedAt       time.Time       `gorm:"index:idx_task_log_task_started,priority:2;not null" json:"started_at"`
 	FinishedAt      *time.Time      `json:"finished_at,omitempty"`
 	Status          string          `gorm:"size:32;not null" json:"status"`
 	Error           string          `gorm:"size:2048" json:"error,omitempty"`
@@ -71,8 +86,15 @@ type ListScheduledTasksResponse struct {
 	Items []ScheduledTask `json:"items"`
 }
 
+type ScheduledTaskLogListFilter struct {
+	Status string
+	From   *time.Time
+	To     *time.Time
+}
+
 type ListScheduledTaskLogsResponse struct {
 	Items []ScheduledTaskLog `json:"items"`
+	Meta  PaginationMeta     `json:"meta"`
 }
 
 type CreateScheduledTaskInput struct {

@@ -548,6 +548,8 @@ definitions:
         items:
           $ref: '#/definitions/models.ScheduledTaskLog'
         type: array
+      meta:
+        $ref: '#/definitions/models.PaginationMeta'
     type: object
   models.ListScheduledTasksResponse:
     properties:
@@ -592,6 +594,15 @@ definitions:
         items:
           $ref: '#/definitions/models.UpstreamMutationResult'
         type: array
+    type: object
+  models.PaginationMeta:
+    properties:
+      limit:
+        type: integer
+      offset:
+        type: integer
+      total:
+        type: integer
     type: object
   models.PropagateConfigResponse:
     properties:
@@ -2482,6 +2493,26 @@ paths:
         name: id
         required: true
         type: string
+      - description: Filter by status (running|success|failed)
+        in: query
+        name: status
+        type: string
+      - description: Include logs started at or after (RFC3339)
+        in: query
+        name: from
+        type: string
+      - description: Include logs started at or before (RFC3339)
+        in: query
+        name: to
+        type: string
+      - description: Page size (default 20, max 100)
+        in: query
+        name: limit
+        type: integer
+      - description: Page offset (default 0)
+        in: query
+        name: offset
+        type: integer
       produces:
       - application/json
       responses:
@@ -2489,6 +2520,14 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/models.ListScheduledTaskLogsResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
       security:
       - BearerAuth: []
       summary: List execution logs for a scheduled task

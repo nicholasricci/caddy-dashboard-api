@@ -24,10 +24,36 @@ func (r *ScheduledTaskLogRepository) Update(ctx context.Context, log *models.Sch
 	return r.db.WithContext(ctx).Save(log).Error
 }
 
-func (r *ScheduledTaskLogRepository) ListByTaskID(ctx context.Context, taskID uuid.UUID) ([]models.ScheduledTaskLog, error) {
+func (r *ScheduledTaskLogRepository) ListByTaskIDPaginated(
+	ctx context.Context,
+	taskID uuid.UUID,
+	filter models.ScheduledTaskLogListFilter,
+	limit, offset int,
+) ([]models.ScheduledTaskLog, int64, error) {
 	var logs []models.ScheduledTaskLog
-	err := r.db.WithContext(ctx).Where("scheduled_task_id = ?", taskID).Order("created_at DESC").Find(&logs).Error
-	return logs, err
+	var total int64
+
+	q := r.db.WithContext(ctx).Model(&models.ScheduledTaskLog{}).Where("scheduled_task_id = ?", taskID)
+	q = applyScheduledTaskLogListFilter(q, filter)
+
+	if err := q.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	err := q.Order("started_at DESC").Limit(limit).Offset(offset).Find(&logs).Error
+	return logs, total, err
+}
+
+func applyScheduledTaskLogListFilter(q *gorm.DB, filter models.ScheduledTaskLogListFilter) *gorm.DB {
+	if filter.Status != "" {
+		q = q.Where("status = ?", filter.Status)
+	}
+	if filter.From != nil {
+		q = q.Where("started_at >= ?", *filter.From)
+	}
+	if filter.To != nil {
+		q = q.Where("started_at <= ?", *filter.To)
+	}
+	return q
 }
 
 func (r *ScheduledTaskLogRepository) DeleteOlderThan(ctx context.Context, days int) error {
