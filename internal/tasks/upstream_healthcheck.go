@@ -3,6 +3,7 @@ package tasks
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"sort"
@@ -14,6 +15,7 @@ import (
 	"github.com/nicholasricci/caddy-dashboard/internal/models"
 	"github.com/nicholasricci/caddy-dashboard/internal/repository"
 	"github.com/nicholasricci/caddy-dashboard/internal/services"
+	"gorm.io/gorm"
 )
 
 type upstreamHealthcheckTask struct {
@@ -39,7 +41,8 @@ func (t *upstreamHealthcheckTask) Name() string {
 }
 
 type upstreamHealthcheckConfig struct {
-	ConfigIDs []string `json:"config_ids"`
+	DiscoveryConfigID string   `json:"discovery_config_id"`
+	ConfigIDs         []string `json:"config_ids"`
 }
 
 type discoveryUpstreamResult struct {
@@ -54,14 +57,31 @@ type discoveryUpstreamResult struct {
 	Error             string   `json:"error,omitempty"`
 }
 
+func parseUpstreamHealthcheckConfig(raw json.RawMessage) (upstreamHealthcheckConfig, uuid.UUID, error) {
+	if len(raw) == 0 || string(raw) == "null" {
+		return upstreamHealthcheckConfig{}, uuid.Nil, fmt.Errorf("missing upstream_healthcheck config")
+	}
+	var cfg upstreamHealthcheckConfig
+	if err := json.Unmarshal(raw, &cfg); err != nil {
+		return upstreamHealthcheckConfig{}, uuid.Nil, fmt.Errorf("invalid upstream_healthcheck config: %w", err)
+	}
+	idStr := strings.TrimSpace(cfg.DiscoveryConfigID)
+	if idStr == "" {
+		return cfg, uuid.Nil, fmt.Errorf("missing discovery_config_id")
+	}
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		return cfg, uuid.Nil, fmt.Errorf("invalid discovery_config_id: %w", err)
+	}
+	return cfg, id, nil
+}
+
 func (t *upstreamHealthcheckTask) Run(ctx context.Context, raw json.RawMessage) (*TaskResult, error) {
 	start := time.Now()
 
-	var cfg upstreamHealthcheckConfig
-	if len(raw) > 0 && string(raw) != "null" {
-		if err := json.Unmarshal(raw, &cfg); err != nil {
-			return FailedResult(fmt.Errorf("invalid upstream_healthcheck config: %w", err)), nil
-		}
+	cfg, discID, err := parseUpstreamHealthcheckConfig(raw)
+	if err != nil {
+		return FailedResult(err), nil
 	}
 
 	configIDFilter := make(map[string]bool, len(cfg.ConfigIDs))
@@ -69,16 +89,16 @@ func (t *upstreamHealthcheckTask) Run(ctx context.Context, raw json.RawMessage) 
 		configIDFilter[strings.TrimSpace(id)] = true
 	}
 
-	discoveries, err := t.discoveryRepo.List(ctx)
+	disc, err := t.discoveryRepo.GetByID(ctx, discID)
 	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return FailedResult(fmt.Errorf("discovery config not found")), nil
+		}
 		return FailedResult(err), nil
 	}
 
-	results := make([]discoveryUpstreamResult, 0, len(discoveries))
-	for _, disc := range discoveries {
-		r := t.checkDiscovery(ctx, disc, configIDFilter)
-		results = append(results, r)
-	}
+	r := t.checkDiscovery(ctx, *disc, configIDFilter)
+	results := []discoveryUpstreamResult{r}
 
 	return SuccessResult(map[string]any{
 		"duration_ms":       durationMs(start),

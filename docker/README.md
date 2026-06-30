@@ -28,7 +28,7 @@ Task supportati:
 - `discovery_run` — esecuzione automatica periodica della discovery
 - `token_cleanup` — pulizia refresh token scaduti
 - `node_healthcheck` — verifica raggiungibilità nodi Caddy via dispatcher
-- `upstream_healthcheck` — TCP health check degli upstream, rimozione automatica di quelli non funzionanti
+- `upstream_healthcheck` — TCP health check degli upstream su un discovery group (`discovery_config_id` obbligatorio nel config; `config_ids` opzionale per filtrare gli `@id` Caddy), rimozione automatica di quelli non funzionanti
 
 Configurabili via env:
 ```bash
