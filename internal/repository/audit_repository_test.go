@@ -94,8 +94,8 @@ func TestActorPatternToLike(t *testing.T) {
 	}{
 		{"adm*", "adm%"},
 		{"*scheduler*", "%scheduler%"},
-		{"svc_%_bot", `svc\_\%\_bot`},
-		{`a\b*c`, `a\\b%c`},
+		{"svc_%_bot", "svc!_!%!_bot"},
+		{`a\b*c`, `a\b%c`},
 	}
 	for _, tc := range tests {
 		got := actorPatternToLike(tc.in)

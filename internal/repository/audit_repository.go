@@ -8,7 +8,7 @@ import (
 	"gorm.io/gorm"
 )
 
-const actorLikeEscape = '\\'
+const actorLikeEscape = '!'
 
 type AuditRepository struct {
 	db *gorm.DB
@@ -60,7 +60,7 @@ func applyActorFilter(q *gorm.DB, actor string) *gorm.DB {
 	if !strings.Contains(actor, "*") {
 		return q.Where("actor = ?", actor)
 	}
-	return q.Where(`actor LIKE ? ESCAPE '\'`, actorPatternToLike(actor))
+	return q.Where("actor LIKE ? ESCAPE '!'", actorPatternToLike(actor))
 }
 
 func actorPatternToLike(pattern string) string {
