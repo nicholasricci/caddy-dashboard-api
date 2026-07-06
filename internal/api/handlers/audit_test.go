@@ -98,6 +98,20 @@ func TestParseAuditListFilter_FromAfterTo(t *testing.T) {
 	}
 }
 
+func TestParseAuditListFilter_PreservesActorWildcard(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/audit?actor=%20adm*%20", nil)
+
+	filter, err := parseAuditListFilter(c)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if filter.Actor != "adm*" {
+		t.Fatalf("expected trimmed wildcard actor, got %q", filter.Actor)
+	}
+}
+
 func TestParseAuditListFilter_TrimsActor(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	c, _ := gin.CreateTestContext(httptest.NewRecorder())

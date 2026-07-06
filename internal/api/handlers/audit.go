@@ -27,7 +27,7 @@ func NewAuditHandler(svc *services.AuditService, logger *zap.Logger) *AuditHandl
 // @Produce json
 // @Param action query string false "Filter by action (see GET /audit/types)"
 // @Param resource query string false "Filter by resource (see GET /audit/types)"
-// @Param actor query string false "Filter by actor (exact match)"
+// @Param actor query string false "Filter by actor (exact match, or use * as wildcard)"
 // @Param resource_id query string false "Filter by resource ID (exact match)"
 // @Param from query string false "Include logs from this time (RFC3339)"
 // @Param to query string false "Include logs up to this time (RFC3339)"

@@ -2,10 +2,13 @@ package repository
 
 import (
 	"context"
+	"strings"
 
 	"github.com/nicholasricci/caddy-dashboard/internal/models"
 	"gorm.io/gorm"
 )
+
+const actorLikeEscape = '\\'
 
 type AuditRepository struct {
 	db *gorm.DB
@@ -39,7 +42,7 @@ func applyAuditListFilter(q *gorm.DB, filter models.AuditListFilter) *gorm.DB {
 		q = q.Where("resource = ?", filter.Resource)
 	}
 	if filter.Actor != "" {
-		q = q.Where("actor = ?", filter.Actor)
+		q = applyActorFilter(q, filter.Actor)
 	}
 	if filter.ResourceID != "" {
 		q = q.Where("resource_id = ?", filter.ResourceID)
@@ -51,4 +54,28 @@ func applyAuditListFilter(q *gorm.DB, filter models.AuditListFilter) *gorm.DB {
 		q = q.Where("created_at <= ?", *filter.To)
 	}
 	return q
+}
+
+func applyActorFilter(q *gorm.DB, actor string) *gorm.DB {
+	if !strings.Contains(actor, "*") {
+		return q.Where("actor = ?", actor)
+	}
+	return q.Where(`actor LIKE ? ESCAPE '\'`, actorPatternToLike(actor))
+}
+
+func actorPatternToLike(pattern string) string {
+	var b strings.Builder
+	b.Grow(len(pattern))
+	for _, r := range pattern {
+		switch r {
+		case '*':
+			b.WriteByte('%')
+		case actorLikeEscape, '%', '_':
+			b.WriteByte(actorLikeEscape)
+			b.WriteRune(r)
+		default:
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
 }

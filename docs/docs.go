@@ -190,7 +190,7 @@ const docTemplate = `{
                     },
                     {
                         "type": "string",
-                        "description": "Filter by actor (exact match)",
+                        "description": "Filter by actor (exact match, or use * as wildcard)",
                         "name": "actor",
                         "in": "query"
                     },

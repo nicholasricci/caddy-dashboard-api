@@ -969,7 +969,7 @@ paths:
         in: query
         name: resource
         type: string
-      - description: Filter by actor (exact match)
+      - description: Filter by actor (exact match, or use * as wildcard)
         in: query
         name: actor
         type: string
